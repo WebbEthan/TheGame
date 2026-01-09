@@ -1,4 +1,4 @@
-#if UNITY_EDITOR
+﻿#if UNITY_EDITOR
 using UnityEditor;
 using UnityEngine;
 using System.Diagnostics;
@@ -6,6 +6,7 @@ using System.IO;
 using Debug = UnityEngine.Debug;
 using UnityEditor.SceneManagement;
 using UnityEngine.SceneManagement;
+using System;
 
 public static class GitMan
 {
@@ -122,7 +123,7 @@ private const double REMOTE_CHECK_INTERVAL_MINUTES = 3.0;
         if (_autoSyncInProgress) return;
         if (EditorApplication.isPlayingOrWillChangePlaymode) return;
 
-        Debug.Log("GitMan: Scene saved � syncing...");
+        Debug.Log("GitMan: Scene saved — syncing...");
 
         EditorApplication.delayCall += () =>
         {
@@ -177,39 +178,54 @@ private const double REMOTE_CHECK_INTERVAL_MINUTES = 3.0;
 
     public static string RunGit(string args)
     {
-        string gitExecutable = GitPath; // Use the user-set path
+        string projectRoot = ProjectRoot;
+        string gitExe = GitPath;
+
+        // Use Windows shell broker (critical)
+        string shell = Environment.GetEnvironmentVariable("ComSpec");
+        if (string.IsNullOrEmpty(shell))
+            shell = "cmd.exe";
+
+        string command =
+            $"/c \"cd /d \"{projectRoot}\" && \"{gitExe}\" {args}\"";
 
         ProcessStartInfo psi = new ProcessStartInfo
         {
-            FileName = gitExecutable,
-            Arguments = args,
-            WorkingDirectory = ProjectRoot,
+            FileName = shell,
+            Arguments = command,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
-            CreateNoWindow = true
+            CreateNoWindow = true,
+            LoadUserProfile = true   // ← THIS IS IMPORTANT
         };
 
-        using (Process p = Process.Start(psi))
+        try
         {
-            string output = p.StandardOutput.ReadToEnd();
-            string error = p.StandardError.ReadToEnd();
-            p.WaitForExit();
-
-            // Ignore LF/CRLF warnings
-            if (!string.IsNullOrEmpty(error))
+            using (Process p = Process.Start(psi))
             {
-                if (!error.Contains("LF will be replaced") &&
+                string output = p.StandardOutput.ReadToEnd();
+                string error = p.StandardError.ReadToEnd();
+                p.WaitForExit();
+
+                if (!string.IsNullOrEmpty(error) &&
+                    !error.Contains("LF will be replaced") &&
                     !error.Contains("CRLF will be replaced") &&
                     !error.Contains("CRLF would be replaced"))
                 {
                     Debug.LogError(error);
                 }
-            }
 
-            return output;
+                return output;
+            }
+        }
+        catch (System.ComponentModel.Win32Exception e)
+        {
+            Debug.LogError($"GitMan: Process start failed ({e.Message})");
+            return string.Empty;
         }
     }
+
 
 
     // ==============================
