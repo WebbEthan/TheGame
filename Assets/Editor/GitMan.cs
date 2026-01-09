@@ -178,6 +178,12 @@ private const double REMOTE_CHECK_INTERVAL_MINUTES = 3.0;
 
     public static string RunGit(string args)
     {
+        if (string.IsNullOrEmpty(GitPath) || !File.Exists(GitPath))
+        {
+            Debug.LogError("GitMan: Git path is invalid.");
+            return string.Empty;
+        }
+
         string projectRoot = ProjectRoot;
         string gitExe = GitPath;
 
@@ -197,7 +203,7 @@ private const double REMOTE_CHECK_INTERVAL_MINUTES = 3.0;
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
-            LoadUserProfile = true   // ← THIS IS IMPORTANT
+            LoadUserProfile = true
         };
 
         try
