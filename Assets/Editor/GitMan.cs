@@ -7,6 +7,13 @@ using Debug = UnityEngine.Debug;
 
 public static class GitMan
 {
+    // ==============================
+    // Auto pull/push on scene save
+    // ==============================
+    private const double REMOTE_CHECK_INTERVAL_MINUTES = 3.0;
+    private static double _lastRemoteCheckTime;
+    private static bool _autoSyncInProgress;
+
     [InitializeOnLoadMethod]
     private static void StartRemoteWatcher()
     {
@@ -26,8 +33,6 @@ public static class GitMan
         };
     }
 
-
-
     private static void CheckRemoteAndPull()
     {
         if (!EnsureRepoURL()) return;
@@ -43,6 +48,7 @@ public static class GitMan
             AutoPullMerge();
         }
     }
+
     private static void AutoPullMerge()
     {
         if (_autoSyncInProgress) return;
@@ -56,34 +62,35 @@ public static class GitMan
 
         _autoSyncInProgress = false;
     }
+
     private static void AutoPullMergePush()
     {
-        if (!EnsureLogin()) return;
-
+        if (_autoSyncInProgress) return;
         _autoSyncInProgress = true;
 
+        // Fetch the latest from remote
         RunGit("fetch");
 
         string branch = RunGit("rev-parse --abbrev-ref HEAD").Trim();
         string count = RunGit($"rev-list HEAD..origin/{branch} --count").Trim();
 
+        // Pull if remote has new commits
         if (int.TryParse(count, out int commits) && commits > 0)
         {
             RunGit("pull --rebase");
         }
 
-        // Stage only scene-related files
-        RunGit("add *.unity");
-        RunGit("add *.meta");
+        // Stage all changes, including new files
+        RunGit("add -A");
 
         string status = RunGit("status --porcelain");
         if (!string.IsNullOrEmpty(status))
         {
-            string msg = $"Auto-merge scene {System.DateTime.Now:yyyy-MM-dd HH:mm:ss}";
+            string msg = "Synchronizing scene";
             RunGit($"commit -m \"{msg}\"");
             RunGit("push");
 
-            Debug.Log("GitMan: Scene merged & pushed");
+            Debug.Log("GitMan: Scene synchronized and pushed");
         }
 
         _autoSyncInProgress = false;
@@ -102,13 +109,9 @@ public static class GitMan
         };
     }
 
-
-
-
-
-    private const double REMOTE_CHECK_INTERVAL_MINUTES = 3.0;
-    private static double _lastRemoteCheckTime;
-    private static bool _autoSyncInProgress;
+    // ==============================
+    // Scene Save Hook
+    // ==============================
     class GitSceneSaveHook : AssetModificationProcessor
     {
         static string[] OnWillSaveAssets(string[] paths)
@@ -125,16 +128,10 @@ public static class GitMan
         }
     }
 
-
-
-
     // ==============================
     // CONSTANTS / STATE
     // ==============================
     private const string RepoUrlKey = "GitMan_RepoURL";
-
-    private static string gitUser;
-    private static string gitToken;
 
     private static string ProjectRoot =>
         Directory.GetParent(Application.dataPath).FullName;
@@ -160,13 +157,6 @@ public static class GitMan
             UseShellExecute = false,
             CreateNoWindow = true
         };
-
-        if (!string.IsNullOrEmpty(gitUser))
-        {
-            psi.Environment["GIT_USERNAME"] = gitUser;
-            psi.Environment["GIT_PASSWORD"] = gitToken;
-            psi.Environment["GIT_ASKPASS"] = "echo";
-        }
 
         using (Process p = Process.Start(psi))
         {
@@ -211,19 +201,6 @@ public static class GitMan
     }
 
     // ==============================
-    // LOGIN HANDLING
-    // ==============================
-    private static bool EnsureLogin()
-    {
-        if (!string.IsNullOrEmpty(gitUser) &&
-            !string.IsNullOrEmpty(gitToken))
-            return true;
-
-        GitLoginWindow.ShowWindow();
-        return false;
-    }
-
-    // ==============================
     // GIT COMMANDS
     // ==============================
     public static void Commit()
@@ -240,7 +217,6 @@ public static class GitMan
     public static void CommitAndPush()
     {
         if (!EnsureRepoURL()) return;
-        if (!EnsureLogin()) return;
 
         Commit();
         RunGit("push");
@@ -250,7 +226,6 @@ public static class GitMan
     public static void Pull()
     {
         if (!EnsureRepoURL()) return;
-        if (!EnsureLogin()) return;
 
         RunGit("pull --rebase");
         Debug.Log("Git: Pull complete");
@@ -277,13 +252,10 @@ public static class GitMan
     [MenuItem("Git/Set Repository URL")]
     private static void MenuSetRepoURL() => ShowRepoUrlDialog();
 
-    [MenuItem("Git/Login")]
-    private static void MenuLogin() => GitLoginWindow.ShowWindow();
-
     [MenuItem("Git/Commit")]
     private static void MenuCommit() => Commit();
 
-    [MenuItem("Git/Commit & Push")]
+    [MenuItem("Git/Commit and Push")]
     private static void MenuCommitPush() => CommitAndPush();
 
     [MenuItem("Git/Pull")]
@@ -326,39 +298,6 @@ public static class GitMan
             {
                 RepoURL = repoUrl;
                 ConfigureRemote(repoUrl);
-                Close();
-            }
-        }
-    }
-
-    // ==============================
-    // LOGIN WINDOW
-    // ==============================
-    private class GitLoginWindow : EditorWindow
-    {
-        private string username;
-        private string token;
-
-        public static void ShowWindow()
-        {
-            var win = GetWindow<GitLoginWindow>("Git Login");
-            win.minSize = new Vector2(320, 120);
-        }
-
-        private void OnGUI()
-        {
-            GUILayout.Label("Git Credentials (Session Only)", EditorStyles.boldLabel);
-
-            username = EditorGUILayout.TextField("Username", username);
-            token = EditorGUILayout.PasswordField("Token / Password", token);
-
-            GUILayout.Space(10);
-
-            if (GUILayout.Button("Login"))
-            {
-                gitUser = username;
-                gitToken = token;
-                Debug.Log("GitMan: Credentials set for this session.");
                 Close();
             }
         }
