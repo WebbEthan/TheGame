@@ -166,11 +166,22 @@ private const double REMOTE_CHECK_INTERVAL_MINUTES = 3.0;
     // ==============================
     // GIT PROCESS
     // ==============================
+    private const string GitPathKey = "GitMan_GitPath";
+
+    // Git executable path
+    private static string GitPath
+    {
+        get => EditorPrefs.GetString(GitPathKey, "git"); // default to system git
+        set => EditorPrefs.SetString(GitPathKey, value);
+    }
+
     public static string RunGit(string args)
     {
+        string gitExecutable = GitPath; // Use the user-set path
+
         ProcessStartInfo psi = new ProcessStartInfo
         {
-            FileName = "git",
+            FileName = gitExecutable,
             Arguments = args,
             WorkingDirectory = ProjectRoot,
             RedirectStandardOutput = true,
@@ -185,12 +196,21 @@ private const double REMOTE_CHECK_INTERVAL_MINUTES = 3.0;
             string error = p.StandardError.ReadToEnd();
             p.WaitForExit();
 
+            // Ignore LF/CRLF warnings
             if (!string.IsNullOrEmpty(error))
-                Debug.LogError(error);
+            {
+                if (!error.Contains("LF will be replaced") &&
+                    !error.Contains("CRLF will be replaced") &&
+                    !error.Contains("CRLF would be replaced"))
+                {
+                    Debug.LogError(error);
+                }
+            }
 
             return output;
         }
     }
+
 
     // ==============================
     // REPO URL HANDLING
@@ -310,16 +330,18 @@ private const double REMOTE_CHECK_INTERVAL_MINUTES = 3.0;
     private class GitRepoUrlWindow : EditorWindow
     {
         private string repoUrl;
+        private string gitPath;
 
         public static void ShowWindow()
         {
             var win = GetWindow<GitRepoUrlWindow>("Git Repository URL");
-            win.minSize = new Vector2(420, 90);
+            win.minSize = new Vector2(420, 140);
         }
 
         private void OnEnable()
         {
             repoUrl = RepoURL;
+            gitPath = GitPath;
         }
 
         private void OnGUI()
@@ -327,15 +349,33 @@ private const double REMOTE_CHECK_INTERVAL_MINUTES = 3.0;
             GUILayout.Label("Remote Repository URL", EditorStyles.boldLabel);
             repoUrl = EditorGUILayout.TextField("Origin URL", repoUrl);
 
+            GUILayout.Space(5);
+
+            GUILayout.Label("Git Executable Path", EditorStyles.boldLabel);
+            gitPath = EditorGUILayout.TextField("Git Path", gitPath);
+
+            if (GUILayout.Button("Browse"))
+            {
+                string path = EditorUtility.OpenFilePanel("Select git.exe", "", "exe");
+                if (!string.IsNullOrEmpty(path))
+                    gitPath = path;
+            }
+
             GUILayout.Space(10);
 
             if (GUILayout.Button("Save"))
             {
                 RepoURL = repoUrl;
+                GitPath = gitPath;
+
+                // Configure remote with repo URL
                 ConfigureRemote(repoUrl);
+
                 Close();
+                Debug.Log($"GitMan: Git executable set to {gitPath}");
             }
         }
     }
+
 }
 #endif
