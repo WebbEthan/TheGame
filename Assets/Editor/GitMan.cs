@@ -203,25 +203,37 @@ public static class GitMan
     // ==============================
     // GIT COMMANDS
     // ==============================
-    public static void Commit()
+    public static void Commit(System.Action onCommitComplete = null)
     {
         if (!EnsureRepoURL()) return;
 
-        string msg = $"Unity Commit {System.DateTime.Now:yyyy-MM-dd HH:mm:ss}";
+        // Show commit dialog and call callback when done
+        GitWindowMan.ShowWindow(onCommitComplete);
+    }
+    public static void RunCommitWithMessage(string msg)
+    {
+        if (string.IsNullOrEmpty(msg))
+        {
+            Debug.LogWarning("Git: Commit canceled (empty message)");
+            return;
+        }
+
         RunGit("add -A");
         RunGit($"commit -m \"{msg}\"");
-
         Debug.Log("Git: Commit complete");
     }
-
     public static void CommitAndPush()
     {
         if (!EnsureRepoURL()) return;
 
-        Commit();
-        RunGit("push");
-        Debug.Log("Git: Push complete");
+        // Pass a callback to push after commit
+        Commit(() =>
+        {
+            RunGit("push");
+            Debug.Log("Git: Push complete");
+        });
     }
+
 
     public static void Pull()
     {
