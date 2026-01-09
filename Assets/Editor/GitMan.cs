@@ -4,13 +4,32 @@ using UnityEngine;
 using System.Diagnostics;
 using System.IO;
 using Debug = UnityEngine.Debug;
+using UnityEditor.SceneManagement;
+using UnityEngine.SceneManagement;
 
 public static class GitMan
 {
-    // ==============================
-    // Auto pull/push on scene save
-    // ==============================
-    private const double REMOTE_CHECK_INTERVAL_MINUTES = 3.0;
+
+private static void ReloadCurrentScene()
+{
+    if (EditorApplication.isPlayingOrWillChangePlaymode) return;
+
+    Scene activeScene = SceneManager.GetActiveScene();
+    if (!activeScene.isDirty) // avoid losing unsaved changes
+    {
+        EditorSceneManager.OpenScene(activeScene.path, OpenSceneMode.Single);
+        Debug.Log($"GitMan: Reloaded scene {activeScene.name} after pull/merge");
+    }
+    else
+    {
+        Debug.LogWarning($"GitMan: Scene {activeScene.name} has unsaved changes, skipping reload to avoid data loss");
+    }
+}
+
+// ==============================
+// Auto pull/push on scene save
+// ==============================
+private const double REMOTE_CHECK_INTERVAL_MINUTES = 3.0;
     private static double _lastRemoteCheckTime;
     private static bool _autoSyncInProgress;
 
@@ -61,6 +80,7 @@ public static class GitMan
         RunGit("add *.meta");
 
         _autoSyncInProgress = false;
+        ReloadCurrentScene();
     }
 
     private static void AutoPullMergePush()
@@ -94,6 +114,7 @@ public static class GitMan
         }
 
         _autoSyncInProgress = false;
+        ReloadCurrentScene();
     }
 
     public static void OnSceneSaved()
@@ -241,6 +262,7 @@ public static class GitMan
 
         RunGit("pull --rebase");
         Debug.Log("Git: Pull complete");
+        ReloadCurrentScene();
     }
 
     public static void Restore()
