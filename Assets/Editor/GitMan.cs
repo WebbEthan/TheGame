@@ -166,7 +166,7 @@ private const double REMOTE_CHECK_INTERVAL_MINUTES = 3.0;
     // ==============================
     // GIT PROCESS
     // ==============================
-    private static string RunGit(string args)
+    public static string RunGit(string args)
     {
         ProcessStartInfo psi = new ProcessStartInfo
         {
@@ -278,6 +278,7 @@ private const double REMOTE_CHECK_INTERVAL_MINUTES = 3.0;
         RunGit("reset --hard");
         RunGit("clean -fd");
         Debug.Log("Git: Repository restored");
+        ReloadCurrentScene();
     }
 
     // ==============================
