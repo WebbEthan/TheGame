@@ -163,10 +163,10 @@ public class PhysicsController
                     Inertia.x = MoveVector.x * -attributes.ClimbJumpOut;
                 }
             }
-            else if (RemainingJumpTime == 0)
+            else
             {
                 attributedVector.x = MoveVector.x * attributes.Speed;
-                Inertia.y += attributes.Gravity;
+                if (RemainingJumpTime == 0) Inertia.y += attributes.Gravity;
             }
         }
         if (RemainingJumpTime > 0 && MoveVector.y > 0)
