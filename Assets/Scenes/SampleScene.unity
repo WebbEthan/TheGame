@@ -683,7 +683,7 @@ GameObject:
   - component: {fileID: 1922093350}
   - component: {fileID: 1922093354}
   - component: {fileID: 1922093353}
-  m_Layer: 0
+  m_Layer: 7
   m_Name: Player
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -702,14 +702,22 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 13e3cacfd2e0e0442b67fed7be61377b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LocalPlayerControler
+  physicsController:
+    Touching: 0
+    OnGround: 0
+    MoveVector: {x: 0, y: 0}
+    Inertia: {x: 0, y: 0}
+    RemainingJumpTime: 0
   Attributes:
     BaseAttributes:
-      Speed: 10
-      JumpStrength: 10
+      Speed: 20
+      JumpStrength: 20
       JumpCount: 1
-      CanClimb: 0
-      Gravity: 0
-      ClimbingFallSpeed: 0
+      CanClimb: 1
+      Gravity: -3
+      ClimbingFallSpeed: -2
+      ClimbJumpOut: 30
+      MaxJumpTime: 0.25
     ModifiedAttributes:
       Speed: 0
       JumpStrength: 0
@@ -717,6 +725,8 @@ MonoBehaviour:
       CanClimb: 0
       Gravity: 0
       ClimbingFallSpeed: 0
+      ClimbJumpOut: 0
+      MaxJumpTime: 0
 --- !u!212 &1922093351
 SpriteRenderer:
   serializedVersion: 2
@@ -863,7 +873,7 @@ Rigidbody2D:
   m_Interpolate: 0
   m_SleepingMode: 1
   m_CollisionDetection: 0
-  m_Constraints: 0
+  m_Constraints: 4
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
