@@ -710,8 +710,8 @@ MonoBehaviour:
       CanClimb: 1
       Gravity: -9.8
       ClimbingFallSpeed: -3
-      ClimbJumpOut: 30
-      MaxJumpTime: 1
+      ClimbJumpOut: 50
+      MaxJumpTime: 0.25
     ModifiedAttributes:
       Speed: 0
       JumpStrength: 0
