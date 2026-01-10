@@ -711,10 +711,10 @@ MonoBehaviour:
   Attributes:
     BaseAttributes:
       Speed: 20
-      JumpStrength: 20
+      JumpStrength: 50
       JumpCount: 1
       CanClimb: 1
-      Gravity: -3
+      Gravity: -9.8
       ClimbingFallSpeed: -2
       ClimbJumpOut: 30
       MaxJumpTime: 0.25
@@ -872,7 +872,7 @@ Rigidbody2D:
     m_Bits: 0
   m_Interpolate: 0
   m_SleepingMode: 1
-  m_CollisionDetection: 0
+  m_CollisionDetection: 1
   m_Constraints: 4
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
