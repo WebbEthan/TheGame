@@ -272,7 +272,7 @@ GameObject:
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
+  m_StaticEditorFlags: 2147483647
   m_IsActive: 1
 --- !u!61 &817156654
 BoxCollider2D:
@@ -410,7 +410,7 @@ GameObject:
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
+  m_StaticEditorFlags: 2147483647
   m_IsActive: 1
 --- !u!61 &1221713890
 BoxCollider2D:
@@ -548,7 +548,7 @@ GameObject:
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
+  m_StaticEditorFlags: 2147483647
   m_IsActive: 1
 --- !u!61 &1913093725
 BoxCollider2D:
@@ -702,22 +702,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 13e3cacfd2e0e0442b67fed7be61377b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LocalPlayerControler
-  physicsController:
-    Touching: 0
-    OnGround: 0
-    MoveVector: {x: 0, y: 0}
-    Inertia: {x: 0, y: 0}
-    RemainingJumpTime: 0
   Attributes:
     BaseAttributes:
-      Speed: 20
-      JumpStrength: 50
+      Speed: 30
+      JumpStrength: 20
       JumpCount: 1
       CanClimb: 1
       Gravity: -9.8
-      ClimbingFallSpeed: -2
+      ClimbingFallSpeed: -3
       ClimbJumpOut: 30
-      MaxJumpTime: 0.25
+      MaxJumpTime: 1
     ModifiedAttributes:
       Speed: 0
       JumpStrength: 0
@@ -861,7 +855,7 @@ Rigidbody2D:
   m_UseAutoMass: 0
   m_Mass: 1
   m_LinearDamping: 0
-  m_AngularDamping: 0.05
+  m_AngularDamping: 0
   m_GravityScale: 0
   m_Material: {fileID: 0}
   m_IncludeLayers:

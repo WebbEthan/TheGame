@@ -52,7 +52,10 @@ public class AttributeSet : Attributes
 }
 
 // Instanceable systems to move physics object programaticlly without losing collision or physics attributes
+
+#if DEBUGGING
 [Serializable]
+#endif
 public class PhysicsController
 {
     private LayerMask physicsObjects = 1 | (1 << 6);
@@ -67,8 +70,13 @@ public class PhysicsController
         attributes = attributeSet;
     }
     // System to store the collistion info
+
+#if DEBUGGING
     public bool Touching;
     public bool TouchingPhysicalObject { get { Touching = collider.IsTouchingLayers(physicsObjects); return Touching; } }
+#else
+    public bool TouchingPhysicalObject => collider.IsTouchingLayers(physicsObjects);
+#endif
     private const float groundCheckBuffer = 0.05f;
     // Returns -1 if touching wall to the left and 1 if touching wall to the right
     int TouchedWalls;
