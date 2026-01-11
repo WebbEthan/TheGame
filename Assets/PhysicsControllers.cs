@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Xml.Linq;
 using UnityEngine;
 
 // Holds a basic set of info for moving object
@@ -14,6 +15,8 @@ public interface Attributes
     public float ClimbJumpOut { get; }
     public float MaxJumpTime { get; }
     public float NaturalDrag { get; }
+
+    public float CoyoteTime { get; }
 }
 [Serializable]
 public struct AttributeTypes
@@ -27,6 +30,7 @@ public struct AttributeTypes
     public float ClimbJumpOut;
     public float MaxJumpTime;
     public float NaturalDrag;
+    public float CoyoteTime;
 }
 [Serializable]
 public class AttributeSet : Attributes 
@@ -41,6 +45,8 @@ public class AttributeSet : Attributes
     public float ClimbJumpOut => BaseAttributes.ClimbJumpOut + ModifiedAttributes.ClimbJumpOut;
     public float MaxJumpTime => BaseAttributes.MaxJumpTime + ModifiedAttributes.MaxJumpTime;
     public float NaturalDrag => BaseAttributes.NaturalDrag + ModifiedAttributes.NaturalDrag;
+
+    public float CoyoteTime => BaseAttributes.CoyoteTime + ModifiedAttributes.CoyoteTime;
 
     // Base Attributes
     public AttributeTypes BaseAttributes = new AttributeTypes() {
@@ -86,25 +92,20 @@ public class PhysicsController
     {
         get
         {
-            // Check if we are even touching anything in the physics mask
             if (!TouchingPhysicalObject) return 0;
 
-            // 2. Get the horizontal extent (half-width) of the collider
+            // Box height is slightly shorter to avoid hitting floors/ceilings
+            Vector2 boxSize = new Vector2(0.01f, collider.bounds.size.y * 0.9f);
             float distanceToSideEdge = collider.bounds.extents.x;
 
-            // 3. Check Left (-1)
-            RaycastHit2D leftHit = Physics2D.Raycast(physicsInteractor.position, Vector2.left, distanceToSideEdge + groundCheckBuffer, physicsObjects);
-            if (leftHit.collider != null && Math.Abs(leftHit.distance - distanceToSideEdge) <= groundCheckBuffer)
-            {
-                return -1;
-            }
+            // Check Left
+            RaycastHit2D leftHit = Physics2D.BoxCast(physicsInteractor.position, boxSize, 0f, Vector2.left, distanceToSideEdge + groundCheckBuffer, physicsObjects);
+            if (leftHit.collider != null && Math.Abs(leftHit.distance - distanceToSideEdge) <= groundCheckBuffer) return -1;
 
-            // 4. Check Right (1)
-            RaycastHit2D rightHit = Physics2D.Raycast(physicsInteractor.position, Vector2.right, distanceToSideEdge + groundCheckBuffer, physicsObjects);
-            if (rightHit.collider != null && Math.Abs(rightHit.distance - distanceToSideEdge) <= groundCheckBuffer)
-            {
-                return 1;
-            }
+            // Check Right
+            RaycastHit2D rightHit = Physics2D.BoxCast(physicsInteractor.position, boxSize, 0f, Vector2.right, distanceToSideEdge + groundCheckBuffer, physicsObjects);
+            if (rightHit.collider != null && Math.Abs(rightHit.distance - distanceToSideEdge) <= groundCheckBuffer) return 1;
+
             return 0;
         }
     }
@@ -113,15 +114,18 @@ public class PhysicsController
     {
         get
         {
-            // If we aren't touching ANY layers in the mask, we definitely aren't grounded
             if (!TouchingPhysicalObject) return false;
 
-            // Pivot/Center to edge distance
+            // 1. Calculate the size for our box
+            // We make the width slightly smaller (90%) so it doesn't hit walls
+            Vector2 boxSize = new Vector2(collider.bounds.size.x * 0.9f, 0.01f);
             float distanceToBottomEdge = collider.bounds.extents.y;
 
-            // Perform Raycast
-            RaycastHit2D hit = Physics2D.Raycast(
+            // 2. Perform BoxCast downwards
+            RaycastHit2D hit = Physics2D.BoxCast(
                 physicsInteractor.position,
+                boxSize,
+                0f,             // Rotation
                 Vector2.down,
                 distanceToBottomEdge + groundCheckBuffer,
                 physicsObjects
@@ -132,19 +136,31 @@ public class PhysicsController
                 float distanceToGround = hit.distance;
                 return Math.Abs(distanceToGround - distanceToBottomEdge) <= groundCheckBuffer;
             }
-
             return false;
         }
     }
+
 
     public Vector2 MoveVector;
     public Vector2 Inertia = Vector2.zero;
     private int RemainingJumps = 0;
     public float RemainingJumpTime = 0;
+    private float CoyoteTimer = 0; // The new Coyote Time tracker
+
     public void PhysicsUpdate(bool AllowJumpStart)
     {
         OnGround = IsGrounded;
         TouchedWalls = GetWalls;
+
+        // Update Coyote Timer
+        if (OnGround)
+        {
+            CoyoteTimer = attributes.CoyoteTime;
+        }
+        else
+        {
+            CoyoteTimer -= Time.deltaTime;
+        }
 
         if (TouchedWalls != 0 || MoveVector.x == 0) Inertia.x = 0;
 
@@ -161,7 +177,6 @@ public class PhysicsController
                 RemainingJumpTime = attributes.MaxJumpTime;
             }
 
-            // Only move via input if not blocked by a wall
             if (TouchedWalls * MoveVector.x != 1)
             {
                 attributedVector.x = MoveVector.x * attributes.Speed;
@@ -175,19 +190,26 @@ public class PhysicsController
                 if (MoveVector.y > 0 && AllowJumpStart)
                 {
                     RemainingJumpTime = attributes.MaxJumpTime;
-                    // THE KICK: Boost inertia significantly
                     Inertia.x = MoveVector.x * -attributes.ClimbJumpOut;
                     Inertia.y = attributes.JumpStrength;
                 }
             }
             else
             {
-                // Allow air control
+                // COYOTE JUMP LOGIC
+                if (MoveVector.y > 0 && AllowJumpStart && CoyoteTimer > 0)
+                {
+                    CoyoteTimer = 0; // Consume the window
+                    RemainingJumpTime = attributes.MaxJumpTime;
+                }
+
                 attributedVector.x = MoveVector.x * attributes.Speed;
 
-                // TIME BOUND GRAVITY
+                // GRAVITY FIX: Apply gravity to a temporary Y offset
+                // Instead of adding it to Inertia (which gets decayed),
+                // we add it to the physics velocity directly or keep it separate.
                 if (RemainingJumpTime <= 0)
-                    Inertia.y += attributes.Gravity * Time.deltaTime * 10;
+                    attributedVector.y = physicsInteractor.linearVelocity.y + (attributes.Gravity * Time.deltaTime * 10);
             }
         }
 
@@ -196,24 +218,30 @@ public class PhysicsController
         {
             RemainingJumpTime -= Time.deltaTime;
             attributedVector.y = attributes.JumpStrength;
+            Inertia.y = 0; // Clear vertical inertia while jumping
         }
         else
         {
             RemainingJumpTime = 0;
         }
 
-        // Apply Drag (Time-bound exponential decay)
-        float dragCoeff = OnGround ? 0.001f : 0.1f; // Ground stops you faster
+        // 2. DRAG FIX (Apply ONLY to X to prevent gravity-braking)
+        float dragCoeff = OnGround ? 0.001f : 0.1f;
         float decay = Mathf.Pow(dragCoeff * attributes.NaturalDrag, Time.deltaTime);
-        Inertia *= decay;
+
+        // Decaying X prevents infinite wall jump speed
+        Inertia.x *= decay;
+
+        // Only decay Y if it's "positive" (from a wall jump kick)
+        // This allows the wall jump "Pop" to fade without killing gravity
+        if (Inertia.y > 0) Inertia.y *= decay;
 
         if (Inertia.magnitude < 0.1f) Inertia = Vector2.zero;
 
-        // FINAL VELOCITY CALCULATION
+        // FINAL VELOCITY
         Vector2 finalVelocity = Inertia + attributedVector;
 
-        // Clamp horizontal speed so input + inertia doesn't make you a rocket
-        // But allow the wall jump 'Inertia' to exceed 'Speed' if it's high
+        // Clamp horizontal speed
         float maxHorizontal = Mathf.Max(attributes.Speed, Mathf.Abs(Inertia.x));
         finalVelocity.x = Mathf.Clamp(finalVelocity.x, -maxHorizontal, maxHorizontal);
 
