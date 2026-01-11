@@ -710,8 +710,9 @@ MonoBehaviour:
       CanClimb: 1
       Gravity: -9.8
       ClimbingFallSpeed: -3
-      ClimbJumpOut: 50
+      ClimbJumpOut: 40
       MaxJumpTime: 0.25
+      NaturalDrag: 1
     ModifiedAttributes:
       Speed: 0
       JumpStrength: 0
@@ -721,6 +722,7 @@ MonoBehaviour:
       ClimbingFallSpeed: 0
       ClimbJumpOut: 0
       MaxJumpTime: 0
+      NaturalDrag: 0
 --- !u!212 &1922093351
 SpriteRenderer:
   serializedVersion: 2
