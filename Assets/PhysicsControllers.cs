@@ -8,7 +8,7 @@ public interface Attributes
 {
     public float Speed { get; }
     public float JumpStrength { get; }
-    public int JumpCount { get; }
+    public int ExtraJumpCount { get; }
     public bool CanClimb { get; }
     public float Gravity { get; }
     public float ClimbingFallSpeed { get; }
@@ -23,7 +23,7 @@ public struct AttributeTypes
 {
     public float Speed;
     public float JumpStrength;
-    public int JumpCount;
+    public int ExtraJumpCount;
     public bool CanClimb;
     public float Gravity;
     public float ClimbingFallSpeed;
@@ -38,7 +38,7 @@ public class AttributeSet : Attributes
     // Summation Getters
     public float Speed =>  BaseAttributes.Speed + ModifiedAttributes.Speed;
     public float JumpStrength => BaseAttributes.JumpStrength + ModifiedAttributes.JumpStrength;
-    public int JumpCount => BaseAttributes.JumpCount + ModifiedAttributes.JumpCount;
+    public int ExtraJumpCount => BaseAttributes.ExtraJumpCount + ModifiedAttributes.ExtraJumpCount;
     public bool CanClimb => BaseAttributes.CanClimb;
     public float Gravity => BaseAttributes.Gravity + ModifiedAttributes.Gravity;
     public float ClimbingFallSpeed => BaseAttributes.ClimbingFallSpeed + ModifiedAttributes.ClimbingFallSpeed;
@@ -52,7 +52,7 @@ public class AttributeSet : Attributes
     public AttributeTypes BaseAttributes = new AttributeTypes() {
         Speed = 10,
         JumpStrength = 10,
-        JumpCount = 1,
+        ExtraJumpCount = 1,
         NaturalDrag = 1
     };
     // Modified Attributes
@@ -116,16 +116,16 @@ public class PhysicsController
         {
             if (!TouchingPhysicalObject) return false;
 
-            // 1. Calculate the size for our box
+            // Calculate the size for our box
             // We make the width slightly smaller (90%) so it doesn't hit walls
             Vector2 boxSize = new Vector2(collider.bounds.size.x * 0.9f, 0.01f);
             float distanceToBottomEdge = collider.bounds.extents.y;
 
-            // 2. Perform BoxCast downwards
+            // Perform BoxCast downwards
             RaycastHit2D hit = Physics2D.BoxCast(
                 physicsInteractor.position,
                 boxSize,
-                0f,             // Rotation
+                0f,
                 Vector2.down,
                 distanceToBottomEdge + groundCheckBuffer,
                 physicsObjects
@@ -145,103 +145,93 @@ public class PhysicsController
     public Vector2 Inertia = Vector2.zero;
     private int RemainingJumps = 0;
     public float RemainingJumpTime = 0;
-    private float CoyoteTimer = 0; // The new Coyote Time tracker
-
+    private float CoyoteTimer = 0;
     public void PhysicsUpdate(bool AllowJumpStart)
     {
         OnGround = IsGrounded;
         TouchedWalls = GetWalls;
 
         // Update Coyote Timer
-        if (OnGround)
-        {
-            CoyoteTimer = attributes.CoyoteTime;
-        }
-        else
-        {
-            CoyoteTimer -= Time.deltaTime;
-        }
+        if (OnGround) CoyoteTimer = attributes.CoyoteTime;
+        else CoyoteTimer -= Time.deltaTime;
 
+        // Stop moving on x axis if not touching anything and no input
         if (TouchedWalls != 0 || MoveVector.x == 0) Inertia.x = 0;
 
         Vector2 attributedVector = Vector2.zero;
 
-        if (OnGround)
+        // CENTRAL JUMP INPUT HANDLING
+        if (AllowJumpStart && MoveVector.y > 0)
         {
-            RemainingJumps = attributes.JumpCount;
-            Inertia.y = 0;
-
-            if (MoveVector.y > 0 && AllowJumpStart)
+            // PRIORITIZE WALL JUMP
+            // Check if we are airborne and touching a wall we are pushing into
+            if (!OnGround && TouchedWalls != 0 && TouchedWalls * MoveVector.x == 1)
             {
-                RemainingJumps--;
+                // Set jump time
                 RemainingJumpTime = attributes.MaxJumpTime;
-            }
 
-            if (TouchedWalls * MoveVector.x != 1)
+                // Kick away from wall
+                Inertia.x = -MoveVector.x * attributes.ClimbJumpOut;
+
+                Inertia.y = 0;
+                CoyoteTimer = 0;
+            }
+            // REGULAR JUMP (Ground or Coyote)
+            else if (OnGround || CoyoteTimer > 0 || RemainingJumps > 0)
             {
-                attributedVector.x = MoveVector.x * attributes.Speed;
+                if (!OnGround && CoyoteTimer <= 0) RemainingJumps--;
+
+                RemainingJumpTime = attributes.MaxJumpTime;
+                CoyoteTimer = 0;
+                Inertia.y = 0; // Clear any downward velocity
             }
         }
-        else // AIRBORNE
+
+        // MOVEMENT & STATES
+        if (OnGround)
         {
-            if (TouchedWalls * MoveVector.x == 1) // CLIMBING
+            RemainingJumps = attributes.ExtraJumpCount;
+            Inertia.y = 0;
+
+            if (TouchedWalls * MoveVector.x != 1)
+                attributedVector.x = MoveVector.x * attributes.Speed;
+        }
+        else
+        {
+            if (TouchedWalls * MoveVector.x == 1 && RemainingJumpTime <= 0) // CLIMBING
             {
                 Inertia.y = attributes.ClimbingFallSpeed;
-                if (MoveVector.y > 0 && AllowJumpStart)
-                {
-                    RemainingJumpTime = attributes.MaxJumpTime;
-                    Inertia.x = MoveVector.x * -attributes.ClimbJumpOut;
-                    Inertia.y = attributes.JumpStrength;
-                }
             }
-            else
+            else // FREE FALL
             {
-                // COYOTE JUMP LOGIC
-                if (MoveVector.y > 0 && AllowJumpStart && CoyoteTimer > 0)
-                {
-                    CoyoteTimer = 0; // Consume the window
-                    RemainingJumpTime = attributes.MaxJumpTime;
-                }
-
                 attributedVector.x = MoveVector.x * attributes.Speed;
 
-                // GRAVITY FIX: Apply gravity to a temporary Y offset
-                // Instead of adding it to Inertia (which gets decayed),
-                // we add it to the physics velocity directly or keep it separate.
                 if (RemainingJumpTime <= 0)
                     attributedVector.y = physicsInteractor.linearVelocity.y + (attributes.Gravity * Time.deltaTime * 10);
             }
         }
 
-        // Handle Active Jump Phase
+        // VARIABLE JUMP HEIGHT (Holding the button)
         if (RemainingJumpTime > 0 && MoveVector.y > 0)
         {
             RemainingJumpTime -= Time.deltaTime;
             attributedVector.y = attributes.JumpStrength;
-            Inertia.y = 0; // Clear vertical inertia while jumping
         }
         else
         {
             RemainingJumpTime = 0;
         }
 
-        // 2. DRAG FIX (Apply ONLY to X to prevent gravity-braking)
+        // 5. DRAG & FINAL VELOCITY
         float dragCoeff = OnGround ? 0.001f : 0.1f;
         float decay = Mathf.Pow(dragCoeff * attributes.NaturalDrag, Time.deltaTime);
 
-        // Decaying X prevents infinite wall jump speed
         Inertia.x *= decay;
-
-        // Only decay Y if it's "positive" (from a wall jump kick)
-        // This allows the wall jump "Pop" to fade without killing gravity
         if (Inertia.y > 0) Inertia.y *= decay;
-
         if (Inertia.magnitude < 0.1f) Inertia = Vector2.zero;
 
-        // FINAL VELOCITY
         Vector2 finalVelocity = Inertia + attributedVector;
 
-        // Clamp horizontal speed
         float maxHorizontal = Mathf.Max(attributes.Speed, Mathf.Abs(Inertia.x));
         finalVelocity.x = Mathf.Clamp(finalVelocity.x, -maxHorizontal, maxHorizontal);
 

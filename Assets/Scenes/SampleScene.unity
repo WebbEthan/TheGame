@@ -844,18 +844,18 @@ MonoBehaviour:
     BaseAttributes:
       Speed: 30
       JumpStrength: 20
-      JumpCount: 1
+      ExtraJumpCount: 1
       CanClimb: 1
       Gravity: -9.8
       ClimbingFallSpeed: -3
-      ClimbJumpOut: 40
+      ClimbJumpOut: 50
       MaxJumpTime: 0.25
       NaturalDrag: 1
       CoyoteTime: 0.2
     ModifiedAttributes:
       Speed: 0
       JumpStrength: 0
-      JumpCount: 0
+      ExtraJumpCount: 0
       CanClimb: 0
       Gravity: 0
       ClimbingFallSpeed: 0
