@@ -66,6 +66,35 @@ public class AttributeSet : Attributes
 #endif
 public class PhysicsController
 {
+    #region Cached Info
+    // Cached collider geometry (world space)
+    private Vector2 colliderSize;
+    private float halfWidth;
+    private float halfHeight;
+
+    // Cached cast boxes
+    private Vector2 groundBoxSize;
+    private Vector2 wallBoxSize;
+
+    // Cached cast distances
+    private float groundCastDistance;
+    private float wallCastDistance;
+    private void _cacheColliderInfo()
+    {
+        colliderSize = collider.bounds.size;
+
+        halfWidth = colliderSize.x * 0.5f;
+        halfHeight = colliderSize.y * 0.5f;
+
+        // Slightly inset to avoid false positives
+        groundBoxSize = new Vector2(colliderSize.x * 0.9f, 0.01f);
+        wallBoxSize = new Vector2(0.01f, colliderSize.y * 0.9f);
+
+        groundCastDistance = halfHeight + groundCheckBuffer;
+        wallCastDistance = halfWidth + groundCheckBuffer;
+    }
+    #endregion
+
     private LayerMask physicsObjects = 1 | (1 << 6);
     private Rigidbody2D physicsInteractor;
     private Collider2D collider;
@@ -76,69 +105,75 @@ public class PhysicsController
         physicsInteractor = rigidbody2D;
         collider = rigidbody2D.gameObject.GetComponent<Collider2D>();
         attributes = attributeSet;
+        _cacheColliderInfo();
     }
-    // System to store the collistion info
-
-#if DEBUGGING
-    public bool Touching;
-    public bool TouchingPhysicalObject { get { Touching = collider.IsTouchingLayers(physicsObjects); return Touching; } }
-#else
-    public bool TouchingPhysicalObject => collider.IsTouchingLayers(physicsObjects);
-#endif
     private const float groundCheckBuffer = 0.05f;
-    // Returns -1 if touching wall to the left and 1 if touching wall to the right
-    int TouchedWalls;
-    public int GetWalls
+    // Collision state (updated once per physics step)
+    public bool TouchingPhysicalObject { get; private set; }
+    public bool OnGround { get; private set; }
+    // -1 = left wall, 1 = right wall, 0 = none
+    public int TouchedWalls { get; private set; }
+    private void UpdateCollisionState()
     {
-        get
+        TouchingPhysicalObject = collider.IsTouchingLayers(physicsObjects);
+
+        OnGround = false;
+        TouchedWalls = 0;
+
+        if (!TouchingPhysicalObject)
+            return;
+
+        Vector2 position = physicsInteractor.position;
+
+        // Ground
+        RaycastHit2D groundHit = Physics2D.BoxCast(
+            position,
+            groundBoxSize,
+            0f,
+            Vector2.down,
+            groundCastDistance,
+            physicsObjects
+        );
+
+        if (groundHit.collider != null &&
+            Mathf.Abs(groundHit.distance - halfHeight) <= groundCheckBuffer)
         {
-            if (!TouchingPhysicalObject) return 0;
+            OnGround = true;
+        }
 
-            // Box height is slightly shorter to avoid hitting floors/ceilings
-            Vector2 boxSize = new Vector2(0.01f, collider.bounds.size.y * 0.9f);
-            float distanceToSideEdge = collider.bounds.extents.x;
+        // Walls
+        RaycastHit2D leftHit = Physics2D.BoxCast(
+            position,
+            wallBoxSize,
+            0f,
+            Vector2.left,
+            wallCastDistance,
+            physicsObjects
+        );
 
-            // Check Left
-            RaycastHit2D leftHit = Physics2D.BoxCast(physicsInteractor.position, boxSize, 0f, Vector2.left, distanceToSideEdge + groundCheckBuffer, physicsObjects);
-            if (leftHit.collider != null && Math.Abs(leftHit.distance - distanceToSideEdge) <= groundCheckBuffer) return -1;
+        if (leftHit.collider != null &&
+            Mathf.Abs(leftHit.distance - halfWidth) <= groundCheckBuffer)
+        {
+            TouchedWalls = -1;
+            return;
+        }
 
-            // Check Right
-            RaycastHit2D rightHit = Physics2D.BoxCast(physicsInteractor.position, boxSize, 0f, Vector2.right, distanceToSideEdge + groundCheckBuffer, physicsObjects);
-            if (rightHit.collider != null && Math.Abs(rightHit.distance - distanceToSideEdge) <= groundCheckBuffer) return 1;
+        RaycastHit2D rightHit = Physics2D.BoxCast(
+            position,
+            wallBoxSize,
+            0f,
+            Vector2.right,
+            wallCastDistance,
+            physicsObjects
+        );
 
-            return 0;
+        if (rightHit.collider != null &&
+            Mathf.Abs(rightHit.distance - halfWidth) <= groundCheckBuffer)
+        {
+            TouchedWalls = 1;
         }
     }
-    public bool OnGround;
-    public bool IsGrounded
-    {
-        get
-        {
-            if (!TouchingPhysicalObject) return false;
 
-            // Calculate the size for our box
-            // We make the width slightly smaller (90%) so it doesn't hit walls
-            Vector2 boxSize = new Vector2(collider.bounds.size.x * 0.9f, 0.01f);
-            float distanceToBottomEdge = collider.bounds.extents.y;
-
-            // Perform BoxCast downwards
-            RaycastHit2D hit = Physics2D.BoxCast(
-                physicsInteractor.position,
-                boxSize,
-                0f,
-                Vector2.down,
-                distanceToBottomEdge + groundCheckBuffer,
-                physicsObjects
-            );
-
-            if (hit.collider != null)
-            {
-                float distanceToGround = hit.distance;
-                return Math.Abs(distanceToGround - distanceToBottomEdge) <= groundCheckBuffer;
-            }
-            return false;
-        }
-    }
 
 
     public Vector2 MoveVector;
@@ -146,75 +181,93 @@ public class PhysicsController
     private int RemainingJumps = 0;
     public float RemainingJumpTime = 0;
     private float CoyoteTimer = 0;
+    // Used for system consistancy
+    private const float wallJumpImpulseTime = 0.08f;
+    private float wallJumpTime = 0f;
+    private bool NeedWallGap = false;
     public void PhysicsUpdate(bool AllowJumpStart)
     {
-        OnGround = IsGrounded;
-        TouchedWalls = GetWalls;
-
-        // Update Coyote Timer
-        if (OnGround) CoyoteTimer = attributes.CoyoteTime;
-        else CoyoteTimer -= Time.deltaTime;
-
-        // Stop moving on x axis if not touching anything and no input
-        if (TouchedWalls != 0 || MoveVector.x == 0) Inertia.x = 0;
+        // Update Collision states
+        UpdateCollisionState();
+        // Stop moving on x axis if not touching anything and no input ensures wall jumps do not false cancel with collition detection between frames
+        if (NeedWallGap)
+        {
+            if (TouchedWalls == 0)
+            {
+                if (wallJumpTime > 0f) wallJumpTime -= Time.fixedDeltaTime;
+                else NeedWallGap = false;
+            }
+        }
+        else if (TouchedWalls != 0 || MoveVector.x == 0) Inertia.x = 0;
 
         Vector2 attributedVector = Vector2.zero;
 
-        // CENTRAL JUMP INPUT HANDLING
-        if (AllowJumpStart && MoveVector.y > 0)
-        {
-            // PRIORITIZE WALL JUMP
-            // Check if we are airborne and touching a wall we are pushing into
-            if (!OnGround && TouchedWalls != 0 && TouchedWalls * MoveVector.x == 1)
-            {
-                // Set jump time
-                RemainingJumpTime = attributes.MaxJumpTime;
-
-                // Kick away from wall
-                Inertia.x = -MoveVector.x * attributes.ClimbJumpOut;
-
-                Inertia.y = 0;
-                CoyoteTimer = 0;
-            }
-            // REGULAR JUMP (Ground or Coyote)
-            else if (OnGround || CoyoteTimer > 0 || RemainingJumps > 0)
-            {
-                if (!OnGround && CoyoteTimer <= 0) RemainingJumps--;
-
-                RemainingJumpTime = attributes.MaxJumpTime;
-                CoyoteTimer = 0;
-                Inertia.y = 0; // Clear any downward velocity
-            }
-        }
-
-        // MOVEMENT & STATES
         if (OnGround)
         {
+            // Reset jump states
+            CoyoteTimer = attributes.CoyoteTime;
             RemainingJumps = attributes.ExtraJumpCount;
             Inertia.y = 0;
 
             if (TouchedWalls * MoveVector.x != 1)
                 attributedVector.x = MoveVector.x * attributes.Speed;
+            
+            // Jump from ground
+            if (AllowJumpStart && MoveVector.y > 0)
+            {
+                RemainingJumpTime = attributes.MaxJumpTime;
+                CoyoteTimer = 0;
+                Inertia.y = 0;
+            }
         }
         else
         {
-            if (TouchedWalls * MoveVector.x == 1 && RemainingJumpTime <= 0) // CLIMBING
+            // Handles Climbing and Gravity
+            if (TouchedWalls * MoveVector.x == 1) // Wall Collision
             {
-                Inertia.y = attributes.ClimbingFallSpeed;
+                if (RemainingJumpTime <= 0) // Climbing
+                {
+                    if (AllowJumpStart && MoveVector.y > 0)
+                    {
+                        RemainingJumpTime = attributes.MaxJumpTime;
+                        CoyoteTimer = 0;
+                        Inertia.y = 0;
+                        // Kick away from wall
+                        Inertia.x = -MoveVector.x * attributes.ClimbJumpOut;
+                        wallJumpTime = wallJumpImpulseTime;
+                        NeedWallGap = true;
+
+                    }
+                    else
+                    {
+                        Inertia.y = attributes.ClimbingFallSpeed;
+                    }
+                }
             }
-            else // FREE FALL
+            else if (RemainingJumpTime <= 0) // Free Fall
             {
                 attributedVector.x = MoveVector.x * attributes.Speed;
-
-                if (RemainingJumpTime <= 0)
-                    attributedVector.y = physicsInteractor.linearVelocity.y + (attributes.Gravity * Time.deltaTime * 10);
+                attributedVector.y = physicsInteractor.linearVelocity.y + (attributes.Gravity * Time.fixedDeltaTime * 10);
+            }
+            else
+            {
+                attributedVector.x = MoveVector.x * attributes.Speed;
+            }
+            // Handles Coyote and Double Jump
+            CoyoteTimer -= Time.fixedDeltaTime;
+            if (AllowJumpStart && (CoyoteTimer > 0 || RemainingJumps > 0) && MoveVector.y > 0 && !NeedWallGap)
+            {
+                RemainingJumpTime = attributes.MaxJumpTime;
+                RemainingJumps--;
+                CoyoteTimer = 0;
+                Inertia.y = 0;
             }
         }
 
-        // VARIABLE JUMP HEIGHT (Holding the button)
+        // Variable Jump Height Handling (Holding the button)
         if (RemainingJumpTime > 0 && MoveVector.y > 0)
         {
-            RemainingJumpTime -= Time.deltaTime;
+            RemainingJumpTime -= Time.fixedDeltaTime;
             attributedVector.y = attributes.JumpStrength;
         }
         else
@@ -222,16 +275,15 @@ public class PhysicsController
             RemainingJumpTime = 0;
         }
 
-        // 5. DRAG & FINAL VELOCITY
+        // Apply Exponential Drag
         float dragCoeff = OnGround ? 0.001f : 0.1f;
-        float decay = Mathf.Pow(dragCoeff * attributes.NaturalDrag, Time.deltaTime);
+        float decay = Mathf.Pow(dragCoeff * attributes.NaturalDrag, Time.fixedDeltaTime);
+        Inertia.x *= decay; 
 
-        Inertia.x *= decay;
         if (Inertia.y > 0) Inertia.y *= decay;
-        if (Inertia.magnitude < 0.1f) Inertia = Vector2.zero;
+        if (Inertia.magnitude < 0.1f) Inertia = Vector2.zero; 
 
         Vector2 finalVelocity = Inertia + attributedVector;
-
         float maxHorizontal = Mathf.Max(attributes.Speed, Mathf.Abs(Inertia.x));
         finalVelocity.x = Mathf.Clamp(finalVelocity.x, -maxHorizontal, maxHorizontal);
 

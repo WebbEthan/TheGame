@@ -16,57 +16,65 @@ public class LocalPlayerControler : MonoBehaviour
         physicsController = new PhysicsController(physicsInteractor, Attributes);
     }
 
-    private int lastXDir = 0;
-    private int lastYDir = 0;
-    private bool jumpKeyWasHeld;
+    private int pressCounter = 0;
+    private int lastW, lastA, lastS, lastD;
+
+    public Vector2 inputVector;
+
+    private float xDir;
+    private float yDir;
+    private bool jumpRequested;
+
     private void Update()
     {
         var keyboard = Keyboard.current;
         if (keyboard == null) return;
 
+        // 1. Capture Raw States
+        bool wHeld = keyboard.wKey.isPressed;
+        bool sHeld = keyboard.sKey.isPressed;
+        bool aHeld = keyboard.aKey.isPressed;
+        bool dHeld = keyboard.dKey.isPressed;
+
+        // 2. Handle Reset Logic
+        if (!wHeld && !sHeld && !aHeld && !dHeld)
+        {
+            pressCounter = 0;
+            lastW = lastA = lastS = lastD = 0;
+        }
+
+        // 3. Update Press Order (SOCD)
+        if (keyboard.wKey.wasPressedThisFrame) lastW = ++pressCounter;
+        if (keyboard.sKey.wasPressedThisFrame) lastS = ++pressCounter;
+        if (keyboard.aKey.wasPressedThisFrame) lastA = ++pressCounter;
+        if (keyboard.dKey.wasPressedThisFrame) lastD = ++pressCounter;
+
+        // 4. Calculate Directions once per frame
         // Horizontal
-        if (keyboard.aKey.wasPressedThisFrame) lastXDir = -1;
-        if (keyboard.dKey.wasPressedThisFrame) lastXDir = 1;
+        if (aHeld && dHeld) xDir = (lastA > lastD) ? -1 : 1;
+        else if (aHeld) xDir = -1;
+        else if (dHeld) xDir = 1;
+        else xDir = 0;
 
-        // Reset if keys are released
-        if (!keyboard.aKey.isPressed && lastXDir == -1) lastXDir = 0;
-        if (!keyboard.dKey.isPressed && lastXDir == 1) lastXDir = 0;
+        // Vertical
+        if (wHeld && sHeld) yDir = (lastW > lastS) ? 1 : -1;
+        else if (wHeld) yDir = 1;
+        else if (sHeld) yDir = -1;
+        else yDir = 0;
 
-        // If the "last" key was released but the other is still held, switch to the other, prevents input bias
-        if (lastXDir == 0)
-        {
-            if (keyboard.aKey.isPressed) lastXDir = -1;
-            else if (keyboard.dKey.isPressed) lastXDir = 1;
-        }
+        // 5. Catch Jump (Accumulate if FixedUpdate is slow)
+        if (keyboard.wKey.wasPressedThisFrame) jumpRequested = true;
+    }
 
-        // Verticle
-        if (keyboard.wKey.wasPressedThisFrame) lastYDir = 1;
-        if (keyboard.sKey.wasPressedThisFrame) lastYDir = -1;
+    private void FixedUpdate()
+    {
+        // Simply use the values calculated in Update
+        inputVector = new Vector2(xDir, yDir);
 
-        if (!keyboard.wKey.isPressed && lastYDir == 1) lastYDir = 0;
-        if (!keyboard.sKey.isPressed && lastYDir == -1) lastYDir = 0;
-
-        if (lastYDir == 0)
-        {
-            if (keyboard.wKey.isPressed) lastYDir = 1;
-            else if (keyboard.sKey.isPressed) lastYDir = -1;
-        }
-
-        // A new jump can only start if 'W' is pressed this frame 
-        // OR if we just transitioned from not-holding to holding.
-        bool jumpKeyPressedThisFrame = keyboard.wKey.wasPressedThisFrame;
-
-        // Safety check: if they were holding it last frame and are still holding it, 
-        // it's not a "new" jump.
-        bool isNewJumpIntent = jumpKeyPressedThisFrame && !jumpKeyWasHeld;
-
-        Vector2 inputVector = new Vector2(lastXDir, lastYDir);
         physicsController.MoveVector = inputVector;
+        physicsController.PhysicsUpdate(jumpRequested);
 
-        // Pass the gap check into PhysicsUpdate
-        physicsController.PhysicsUpdate(isNewJumpIntent);
-
-        // Store current state for next frame
-        jumpKeyWasHeld = keyboard.wKey.isPressed;
+        // Consume the jump trigger so it doesn't fire again until a new press
+        jumpRequested = false;
     }
 }
