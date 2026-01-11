@@ -194,16 +194,18 @@ public class PhysicsController
         {
             if (TouchedWalls == 0)
             {
-                if (wallJumpTime > 0f) wallJumpTime -= Time.fixedDeltaTime;
+                if (wallJumpTime > 0f) wallJumpTime -= Time.deltaTime;
                 else NeedWallGap = false;
             }
         }
         else if (TouchedWalls != 0 || MoveVector.x == 0) Inertia.x = 0;
 
         Vector2 attributedVector = Vector2.zero;
+        float dragCoeff;
 
         if (OnGround)
         {
+            dragCoeff = -10;
             // Reset jump states
             CoyoteTimer = attributes.CoyoteTime;
             RemainingJumps = attributes.ExtraJumpCount;
@@ -222,6 +224,7 @@ public class PhysicsController
         }
         else
         {
+            dragCoeff = -1;
             // Handles Climbing and Gravity
             if (TouchedWalls * MoveVector.x == 1) // Wall Collision
             {
@@ -247,14 +250,14 @@ public class PhysicsController
             else if (RemainingJumpTime <= 0) // Free Fall
             {
                 attributedVector.x = MoveVector.x * attributes.Speed;
-                attributedVector.y = physicsInteractor.linearVelocity.y + (attributes.Gravity * Time.fixedDeltaTime * 10);
+                Inertia.y += attributes.Gravity * Time.deltaTime * 10;
             }
             else
             {
                 attributedVector.x = MoveVector.x * attributes.Speed;
             }
             // Handles Coyote and Double Jump
-            CoyoteTimer -= Time.fixedDeltaTime;
+            CoyoteTimer -= Time.deltaTime;
             if (AllowJumpStart && (CoyoteTimer > 0 || RemainingJumps > 0) && MoveVector.y > 0 && !NeedWallGap)
             {
                 RemainingJumpTime = attributes.MaxJumpTime;
@@ -267,7 +270,7 @@ public class PhysicsController
         // Variable Jump Height Handling (Holding the button)
         if (RemainingJumpTime > 0 && MoveVector.y > 0)
         {
-            RemainingJumpTime -= Time.fixedDeltaTime;
+            RemainingJumpTime -= Time.deltaTime;
             attributedVector.y = attributes.JumpStrength;
         }
         else
@@ -276,11 +279,9 @@ public class PhysicsController
         }
 
         // Apply Exponential Drag
-        float dragCoeff = OnGround ? 0.001f : 0.1f;
-        float decay = Mathf.Pow(dragCoeff * attributes.NaturalDrag, Time.fixedDeltaTime);
+        float decay = Mathf.Exp(dragCoeff * attributes.NaturalDrag * Time.deltaTime);
         Inertia.x *= decay; 
 
-        if (Inertia.y > 0) Inertia.y *= decay;
         if (Inertia.magnitude < 0.1f) Inertia = Vector2.zero; 
 
         Vector2 finalVelocity = Inertia + attributedVector;

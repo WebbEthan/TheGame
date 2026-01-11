@@ -863,6 +863,7 @@ MonoBehaviour:
       MaxJumpTime: 0
       NaturalDrag: 0
       CoyoteTime: 0
+  inputVector: {x: 0, y: 0}
 --- !u!212 &1922093351
 SpriteRenderer:
   serializedVersion: 2
