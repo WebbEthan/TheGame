@@ -12,8 +12,8 @@ public interface Attributes
     public float Gravity { get; }
     public float ClimbingFallSpeed { get; }
     public float ClimbJumpOut { get; }
-
     public float MaxJumpTime { get; }
+    public float NaturalDrag { get; }
 }
 [Serializable]
 public struct AttributeTypes
@@ -26,6 +26,7 @@ public struct AttributeTypes
     public float ClimbingFallSpeed;
     public float ClimbJumpOut;
     public float MaxJumpTime;
+    public float NaturalDrag;
 }
 [Serializable]
 public class AttributeSet : Attributes 
@@ -38,14 +39,15 @@ public class AttributeSet : Attributes
     public float Gravity => BaseAttributes.Gravity + ModifiedAttributes.Gravity;
     public float ClimbingFallSpeed => BaseAttributes.ClimbingFallSpeed + ModifiedAttributes.ClimbingFallSpeed;
     public float ClimbJumpOut => BaseAttributes.ClimbJumpOut + ModifiedAttributes.ClimbJumpOut;
-
     public float MaxJumpTime => BaseAttributes.MaxJumpTime + ModifiedAttributes.MaxJumpTime;
+    public float NaturalDrag => BaseAttributes.NaturalDrag + ModifiedAttributes.NaturalDrag;
 
     // Base Attributes
-    public AttributeTypes BaseAttributes = new AttributeTypes() { 
+    public AttributeTypes BaseAttributes = new AttributeTypes() {
         Speed = 10,
         JumpStrength = 10,
-        JumpCount = 1
+        JumpCount = 1,
+        NaturalDrag = 1
     };
     // Modified Attributes
     public AttributeTypes ModifiedAttributes;
@@ -144,39 +146,52 @@ public class PhysicsController
         OnGround = IsGrounded;
         TouchedWalls = GetWalls;
 
+        if (TouchedWalls != 0 || MoveVector.x == 0) Inertia.x = 0;
+
         Vector2 attributedVector = Vector2.zero;
+
         if (OnGround)
         {
             RemainingJumps = attributes.JumpCount;
             Inertia.y = 0;
+
             if (MoveVector.y > 0 && AllowJumpStart)
             {
                 RemainingJumps--;
                 RemainingJumpTime = attributes.MaxJumpTime;
             }
+
+            // Only move via input if not blocked by a wall
             if (TouchedWalls * MoveVector.x != 1)
             {
                 attributedVector.x = MoveVector.x * attributes.Speed;
             }
         }
-        else
+        else // AIRBORNE
         {
-            // Checks if the player is climbing
-            if (TouchedWalls * MoveVector.x == 1)
+            if (TouchedWalls * MoveVector.x == 1) // CLIMBING
             {
                 Inertia.y = attributes.ClimbingFallSpeed;
                 if (MoveVector.y > 0 && AllowJumpStart)
                 {
                     RemainingJumpTime = attributes.MaxJumpTime;
+                    // THE KICK: Boost inertia significantly
                     Inertia.x = MoveVector.x * -attributes.ClimbJumpOut;
+                    Inertia.y = attributes.JumpStrength;
                 }
             }
             else
             {
+                // Allow air control
                 attributedVector.x = MoveVector.x * attributes.Speed;
-                if (RemainingJumpTime == 0) Inertia.y += attributes.Gravity;
+
+                // TIME BOUND GRAVITY
+                if (RemainingJumpTime <= 0)
+                    Inertia.y += attributes.Gravity * Time.deltaTime * 10;
             }
         }
+
+        // Handle Active Jump Phase
         if (RemainingJumpTime > 0 && MoveVector.y > 0)
         {
             RemainingJumpTime -= Time.deltaTime;
@@ -186,13 +201,22 @@ public class PhysicsController
         {
             RemainingJumpTime = 0;
         }
-        // Drag and Inertia ending
-        Inertia /= 1.1f;
+
+        // Apply Drag (Time-bound exponential decay)
+        float dragCoeff = OnGround ? 0.001f : 0.1f; // Ground stops you faster
+        float decay = Mathf.Pow(dragCoeff * attributes.NaturalDrag, Time.deltaTime);
+        Inertia *= decay;
+
         if (Inertia.magnitude < 0.1f) Inertia = Vector2.zero;
-        Vector3 velocity = Inertia + attributedVector;
-        velocity.x = Mathf.Clamp(velocity.x, -attributes.Speed, attributes.Speed);
-        if (velocity.x * Inertia.x < 0) Inertia.x = 0;
-        // Sets the final Velocity
-        physicsInteractor.linearVelocity = Inertia + attributedVector;
+
+        // FINAL VELOCITY CALCULATION
+        Vector2 finalVelocity = Inertia + attributedVector;
+
+        // Clamp horizontal speed so input + inertia doesn't make you a rocket
+        // But allow the wall jump 'Inertia' to exceed 'Speed' if it's high
+        float maxHorizontal = Mathf.Max(attributes.Speed, Mathf.Abs(Inertia.x));
+        finalVelocity.x = Mathf.Clamp(finalVelocity.x, -maxHorizontal, maxHorizontal);
+
+        physicsInteractor.linearVelocity = finalVelocity;
     }
 }
