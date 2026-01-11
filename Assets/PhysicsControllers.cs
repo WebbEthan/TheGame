@@ -107,6 +107,7 @@ public class PhysicsController
         attributes = attributeSet;
         _cacheColliderInfo();
     }
+    #region ColisionChecks
     private const float groundCheckBuffer = 0.05f;
     // Collision state (updated once per physics step)
     public bool TouchingPhysicalObject { get; private set; }
@@ -173,7 +174,7 @@ public class PhysicsController
             TouchedWalls = 1;
         }
     }
-
+    #endregion
 
 
     public Vector2 MoveVector;
@@ -182,7 +183,7 @@ public class PhysicsController
     public float RemainingJumpTime = 0;
     private float CoyoteTimer = 0;
     // Used for system consistancy
-    private const float wallJumpImpulseTime = 0.08f;
+    private const float wallJumpImpulseTime = 0.1f;
     private float wallJumpTime = 0f;
     private bool NeedWallGap = false;
     public void PhysicsUpdate(bool AllowJumpStart)
@@ -205,7 +206,7 @@ public class PhysicsController
 
         if (OnGround)
         {
-            dragCoeff = -10;
+            dragCoeff = 10;
             // Reset jump states
             CoyoteTimer = attributes.CoyoteTime;
             RemainingJumps = attributes.ExtraJumpCount;
@@ -224,7 +225,7 @@ public class PhysicsController
         }
         else
         {
-            dragCoeff = -1;
+            dragCoeff = 2;
             // Handles Climbing and Gravity
             if (TouchedWalls * MoveVector.x == 1) // Wall Collision
             {
@@ -279,7 +280,8 @@ public class PhysicsController
         }
 
         // Apply Exponential Drag
-        float decay = Mathf.Exp(dragCoeff * attributes.NaturalDrag * Time.deltaTime);
+        float drag = dragCoeff * attributes.NaturalDrag;
+        float decay = Mathf.Max(0f, 1f - (drag * Time.deltaTime));
         Inertia.x *= decay; 
 
         if (Inertia.magnitude < 0.1f) Inertia = Vector2.zero; 
