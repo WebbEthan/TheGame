@@ -15,6 +15,7 @@ public interface Attributes
     public float ClimbJumpOut { get; }
     public float MaxJumpTime { get; }
     public float NaturalDrag { get; }
+    public float StepHeight { get; }
     public float CoyoteTime { get; }
 }
 [Serializable]
@@ -29,6 +30,7 @@ public struct AttributeTypes
     public float ClimbJumpOut;
     public float MaxJumpTime;
     public float NaturalDrag;
+    public float StepHeight_NOTIMPLEMENTED;
     public float CoyoteTime;
 }
 [Serializable]
@@ -44,6 +46,7 @@ public class AttributeSet : Attributes
     public float ClimbJumpOut => BaseAttributes.ClimbJumpOut + ModifiedAttributes.ClimbJumpOut;
     public float MaxJumpTime => BaseAttributes.MaxJumpTime + ModifiedAttributes.MaxJumpTime;
     public float NaturalDrag => BaseAttributes.NaturalDrag + ModifiedAttributes.NaturalDrag;
+    public float StepHeight => BaseAttributes.StepHeight_NOTIMPLEMENTED + ModifiedAttributes.StepHeight_NOTIMPLEMENTED;
     public float CoyoteTime => BaseAttributes.CoyoteTime + ModifiedAttributes.CoyoteTime;
 
     // Base Attributes
