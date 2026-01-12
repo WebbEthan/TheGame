@@ -15,7 +15,6 @@ public interface Attributes
     public float ClimbJumpOut { get; }
     public float MaxJumpTime { get; }
     public float NaturalDrag { get; }
-
     public float CoyoteTime { get; }
 }
 [Serializable]
@@ -45,7 +44,6 @@ public class AttributeSet : Attributes
     public float ClimbJumpOut => BaseAttributes.ClimbJumpOut + ModifiedAttributes.ClimbJumpOut;
     public float MaxJumpTime => BaseAttributes.MaxJumpTime + ModifiedAttributes.MaxJumpTime;
     public float NaturalDrag => BaseAttributes.NaturalDrag + ModifiedAttributes.NaturalDrag;
-
     public float CoyoteTime => BaseAttributes.CoyoteTime + ModifiedAttributes.CoyoteTime;
 
     // Base Attributes
@@ -61,10 +59,7 @@ public class AttributeSet : Attributes
 
 // Instanceable systems to move physics object programaticlly without losing collision or physics attributes
 
-#if DEBUGGING
-[Serializable]
-#endif
-public class PhysicsController
+public class PlayerPhysicsController
 {
     #region Cached Info
     // Cached collider geometry (world space)
@@ -100,7 +95,7 @@ public class PhysicsController
     private Collider2D collider;
 
     public Attributes attributes;
-    public PhysicsController(Rigidbody2D rigidbody2D, Attributes attributeSet)
+    public PlayerPhysicsController(Rigidbody2D rigidbody2D, Attributes attributeSet)
     {
         physicsInteractor = rigidbody2D;
         collider = rigidbody2D.gameObject.GetComponent<Collider2D>();
@@ -264,6 +259,7 @@ public class PhysicsController
                 RemainingJumpTime = attributes.MaxJumpTime;
                 RemainingJumps--;
                 CoyoteTimer = 0;
+
                 Inertia.y = 0;
             }
         }

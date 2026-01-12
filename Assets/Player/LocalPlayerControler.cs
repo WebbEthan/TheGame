@@ -8,14 +8,13 @@ using UnityEngine.InputSystem;
 
 public class LocalPlayerControler : MonoBehaviour
 {
-    public PhysicsController physicsController;
+    public PlayerPhysicsController physicsController;
     public AttributeSet Attributes;
     private void Start()
     {
         Rigidbody2D physicsInteractor = GetComponent<Rigidbody2D>();
-        physicsController = new PhysicsController(physicsInteractor, Attributes);
+        physicsController = new PlayerPhysicsController(physicsInteractor, Attributes);
     }
-
     private int pressCounter = 0;
     private int lastW, lastA, lastS, lastD;
 
@@ -23,7 +22,6 @@ public class LocalPlayerControler : MonoBehaviour
 
     private float xDir;
     private float yDir;
-    private bool jumpRequested;
 
     private void Update()
     {
@@ -36,45 +34,39 @@ public class LocalPlayerControler : MonoBehaviour
         bool aHeld = keyboard.aKey.isPressed;
         bool dHeld = keyboard.dKey.isPressed;
 
-        // 2. Handle Reset Logic
+        // 2. Reset press order if neutral
         if (!wHeld && !sHeld && !aHeld && !dHeld)
         {
             pressCounter = 0;
             lastW = lastA = lastS = lastD = 0;
         }
 
-        // 3. Update Press Order (SOCD)
+        // 3. Update press order (SOCD resolution)
         if (keyboard.wKey.wasPressedThisFrame) lastW = ++pressCounter;
         if (keyboard.sKey.wasPressedThisFrame) lastS = ++pressCounter;
         if (keyboard.aKey.wasPressedThisFrame) lastA = ++pressCounter;
         if (keyboard.dKey.wasPressedThisFrame) lastD = ++pressCounter;
 
-        // 4. Calculate Directions once per frame
-        // Horizontal
-        if (aHeld && dHeld) xDir = (lastA > lastD) ? -1 : 1;
-        else if (aHeld) xDir = -1;
-        else if (dHeld) xDir = 1;
-        else xDir = 0;
+        // 4. Resolve axis directions
+        if (aHeld && dHeld) xDir = (lastA > lastD) ? -1f : 1f;
+        else if (aHeld) xDir = -1f;
+        else if (dHeld) xDir = 1f;
+        else xDir = 0f;
 
-        // Vertical
-        if (wHeld && sHeld) yDir = (lastW > lastS) ? 1 : -1;
-        else if (wHeld) yDir = 1;
-        else if (sHeld) yDir = -1;
-        else yDir = 0;
+        if (wHeld && sHeld) yDir = (lastW > lastS) ? 1f : -1f;
+        else if (wHeld) yDir = 1f;
+        else if (sHeld) yDir = -1f;
+        else yDir = 0f;
 
-        // 5. Catch Jump (Accumulate if FixedUpdate is slow)
-        if (keyboard.wKey.wasPressedThisFrame) jumpRequested = true;
-    }
+        inputVector.x = xDir;
+        inputVector.y = yDir;
 
-    private void FixedUpdate()
-    {
-        // Simply use the values calculated in Update
-        inputVector = new Vector2(xDir, yDir);
+        // 5. Edge-trigger jump
+        bool jumpPressed = keyboard.wKey.wasPressedThisFrame;
 
+        // 6. Drive controller directly (dt-safe)
         physicsController.MoveVector = inputVector;
-        physicsController.PhysicsUpdate(jumpRequested);
-
-        // Consume the jump trigger so it doesn't fire again until a new press
-        jumpRequested = false;
+        physicsController.PhysicsUpdate(jumpPressed);
     }
+
 }
