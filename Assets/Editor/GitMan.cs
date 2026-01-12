@@ -134,21 +134,21 @@ private const double REMOTE_CHECK_INTERVAL_MINUTES = 3.0;
     // ==============================
     // Scene Save Hook
     // ==============================
-    class GitSceneSaveHook : AssetModificationProcessor
-    {
-        static string[] OnWillSaveAssets(string[] paths)
-        {
-            foreach (string p in paths)
-            {
-                if (p.EndsWith(".unity"))
-                {
-                    GitMan.OnSceneSaved();
-                    break;
-                }
-            }
-            return paths;
-        }
-    }
+    //class GitSceneSaveHook : AssetModificationProcessor
+    //{
+    //    static string[] OnWillSaveAssets(string[] paths)
+    //    {
+    //        foreach (string p in paths)
+    //        {
+    //            if (p.EndsWith(".unity"))
+    //            {
+    //                GitMan.OnSceneSaved();
+    //                break;
+    //            }
+    //        }
+    //        return paths;
+    //    }
+    //}
 
     // ==============================
     // CONSTANTS / STATE
