@@ -6,13 +6,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 
-public class ThreadManager : MonoBehaviour
+public static class ThreadManager
 {
     private static string LogPath = "";
     public static int TerrainThreadID;
 
     public static LogHandler MainLog;
-    private void Awake()
+    public static void StartThreadManager()
     {
         // Start Logging
         LogPath = Path.Combine(Application.dataPath, "Editor", "Logs");
