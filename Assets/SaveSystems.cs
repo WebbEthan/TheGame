@@ -74,7 +74,7 @@ public static class SaveSystems
         }
     }
 
-    private static T GetJSONObject<T>(string filepath)
+    public static T GetJSONObject<T>(string filepath)
     {
         if (!File.Exists(filepath))
         {

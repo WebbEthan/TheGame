@@ -4,7 +4,7 @@ using System.Xml.Linq;
 using UnityEngine;
 
 // Holds a basic set of info for moving object
-public interface Attributes
+public interface PhysicsAttributes
 {
     public float Speed { get; }
     public float JumpStrength { get; }
@@ -19,7 +19,7 @@ public interface Attributes
     public float CoyoteTime { get; }
 }
 [Serializable]
-public struct AttributeTypes
+public struct PhysicsAttributeTypes
 {
     public float Speed;
     public float JumpStrength;
@@ -34,7 +34,7 @@ public struct AttributeTypes
     public float CoyoteTime;
 }
 [Serializable]
-public class AttributeSet : Attributes 
+public class PhysicsAttributeSet : PhysicsAttributes 
 {
     // Summation Getters
     public float Speed =>  BaseAttributes.Speed + ModifiedAttributes.Speed;
@@ -50,14 +50,14 @@ public class AttributeSet : Attributes
     public float CoyoteTime => BaseAttributes.CoyoteTime + ModifiedAttributes.CoyoteTime;
 
     // Base Attributes
-    public AttributeTypes BaseAttributes = new AttributeTypes() {
+    public PhysicsAttributeTypes BaseAttributes = new PhysicsAttributeTypes() {
         Speed = 10,
         JumpStrength = 10,
         ExtraJumpCount = 1,
         NaturalDrag = 1
     };
     // Modified Attributes
-    public AttributeTypes ModifiedAttributes;
+    public PhysicsAttributeTypes ModifiedAttributes;
 }
 
 // Instanceable systems to move physics object programaticlly without losing collision or physics attributes
@@ -97,8 +97,8 @@ public class PlayerPhysicsController
     private Rigidbody2D physicsInteractor;
     private Collider2D collider;
 
-    public Attributes attributes;
-    public PlayerPhysicsController(Rigidbody2D rigidbody2D, Attributes attributeSet)
+    public PhysicsAttributes attributes;
+    public PlayerPhysicsController(Rigidbody2D rigidbody2D, PhysicsAttributes attributeSet)
     {
         physicsInteractor = rigidbody2D;
         collider = rigidbody2D.gameObject.GetComponent<Collider2D>();
@@ -278,7 +278,7 @@ public class PlayerPhysicsController
             RemainingJumpTime = 0;
         }
 
-        // Apply Exponential Drag
+        // Apply Exponential Drag V(D*ND)^T => V(e^(D*ND)) => V(1-(D*ND))
         float drag = dragCoeff * attributes.NaturalDrag;
         float decay = Mathf.Max(0f, 1f - (drag * Time.deltaTime));
         Inertia.x *= decay; 

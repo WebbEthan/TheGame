@@ -12,13 +12,58 @@ public static class ThreadManager
     public static int TerrainThreadID;
 
     public static LogHandler MainLog;
+    public static LogHandler ObjectLog;
     public static void StartThreadManager()
     {
         // Start Logging
         LogPath = Path.Combine(Application.dataPath, "Editor", "Logs");
         MainLog = new LogHandler("MainLog");
+        ObjectLog = new LogHandler("ObjectLog");
+        // Start Main Thread Dispatcher
+
         // Start Threads
         TerrainThreadID = StartNewThread("Terraing Generation Thread");
+
+
+    }
+
+
+    private static readonly ConcurrentQueue<Action> MainThreadExecutionQueue = new ConcurrentQueue<Action>();
+    // Pushes operations to main thread
+    public static void MainThreadDispacher(Action action)
+    {
+        if (action == null) return;
+        MainThreadExecutionQueue.Enqueue(action);
+    }
+
+    // Awaits a task on the main thread and returns the result
+    public static async Task<T> AwaitTaskResultOnMainThread<T>(Func<T> action)
+    {
+        var tcs = new TaskCompletionSource<T>();
+
+        MainThreadDispacher(() =>
+        {
+            try
+            {
+                T result = action();
+                tcs.SetResult(result);
+            }
+            catch (Exception ex)
+            {
+                tcs.SetException(ex);
+            }
+        });
+
+        return await tcs.Task;
+    }
+
+    public static void MainThreadDispatchUpdate()
+    {
+        // Execute all queued actions on the Main Thread
+        while (MainThreadExecutionQueue.TryDequeue(out var action))
+        {
+            action.Invoke();
+        }
     }
 
     // Sync async bridge

@@ -2,19 +2,38 @@ using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-
-
-
-
-public class LocalPlayerControler : MonoBehaviour
+public class LocalPlayerControler : GeneralizedStateHandler
 {
+    // Interfacing Methods
+    public override void Hurt()
+    {
+
+    }
+    public override void Heal()
+    {
+
+    }
+    public override void DIE()
+    {
+
+    }
+
+
+
     public PlayerPhysicsController physicsController;
-    public AttributeSet Attributes;
     private void Start()
     {
         Rigidbody2D physicsInteractor = GetComponent<Rigidbody2D>();
-        physicsController = new PlayerPhysicsController(physicsInteractor, Attributes);
+        physicsController = new PlayerPhysicsController(physicsInteractor, PhysicsAttributeSet);
     }
+
+
+
+
+
+
+
+    #region InputHandling
     private int pressCounter = 0;
     private int lastW, lastA, lastS, lastD;
 
@@ -68,5 +87,5 @@ public class LocalPlayerControler : MonoBehaviour
         physicsController.MoveVector = inputVector;
         physicsController.PhysicsUpdate(jumpPressed);
     }
-
+    #endregion
 }
