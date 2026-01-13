@@ -17,7 +17,7 @@ public class EffectDesignDrawer : PropertyDrawer
         int currentIndex = Array.IndexOf(names, scriptProp.stringValue);
         if (currentIndex < 0) currentIndex = 0;
 
-        // 1. Draw the Type Selection Popup
+        // 1. Draw Type Dropdown
         Rect rect = new Rect(position.x, position.y, position.width, 18);
         int newIndex = EditorGUI.Popup(rect, "Effect Type", currentIndex, names);
 
@@ -28,58 +28,75 @@ public class EffectDesignDrawer : PropertyDrawer
             property.serializedObject.ApplyModifiedProperties();
         }
 
-        // 2. Draw Type-Specific Fields
+        // 2. Determine if the current class has [ShowDuration]
+        Type currentType = AssetManager.GetEffectType(scriptProp.stringValue);
+        bool hasShowDuration = currentType?.GetCustomAttribute<ShowDurationAttribute>() != null;
+
+        // 3. Get cached fields
         FieldInfo[] fields = AssetManager.GetFieldsForType(scriptProp.stringValue);
+
         if (fields != null)
         {
+            // Sync array size
             if (valuesProp.arraySize != fields.Length)
                 valuesProp.arraySize = fields.Length;
 
             for (int i = 0; i < fields.Length; i++)
             {
+                // EDITOR-ONLY CHECK: Skip Duration if attribute is missing
+                if (fields[i].Name == "Duration" && !hasShowDuration)
+                {
+                    // Optionally force the serialized string to "0" here so it's saved correctly
+                    valuesProp.GetArrayElementAtIndex(i).stringValue = "0";
+                    continue;
+                }
+
                 rect.y += 20;
                 SerializedProperty element = valuesProp.GetArrayElementAtIndex(i);
-                Type fieldType = fields[i].FieldType;
 
-                EditorGUI.BeginChangeCheck();
-
-                // Logic for specific types
-                if (fieldType == typeof(int))
-                {
-                    int val = int.TryParse(element.stringValue, out int res) ? res : 0;
-                    element.stringValue = EditorGUI.IntField(rect, fields[i].Name, val).ToString();
-                }
-                else if (fieldType == typeof(float))
-                {
-                    float val = float.TryParse(element.stringValue, out float res) ? res : 0f;
-                    element.stringValue = EditorGUI.FloatField(rect, fields[i].Name, val).ToString();
-                }
-                else if (fieldType == typeof(bool))
-                {
-                    bool val = bool.TryParse(element.stringValue, out bool res) && res;
-                    element.stringValue = EditorGUI.Toggle(rect, fields[i].Name, val).ToString();
-                }
-                else
-                {
-                    // Default to text field for strings or unknown types
-                    element.stringValue = EditorGUI.TextField(rect, fields[i].Name, element.stringValue);
-                }
-
-                if (EditorGUI.EndChangeCheck())
-                {
-                    property.serializedObject.ApplyModifiedProperties();
-                }
+                // Draw type-specific field (Int, Float, etc.)
+                DrawTypeSpecificField(rect, fields[i], element);
             }
         }
 
         EditorGUI.EndProperty();
     }
 
+    private void DrawTypeSpecificField(Rect rect, FieldInfo field, SerializedProperty element)
+    {
+        if (field.FieldType == typeof(float))
+        {
+            float.TryParse(element.stringValue, out float val);
+            element.stringValue = EditorGUI.FloatField(rect, field.Name, val).ToString();
+        }
+        else if (field.FieldType == typeof(int))
+        {
+            int.TryParse(element.stringValue, out int val);
+            element.stringValue = EditorGUI.IntField(rect, field.Name, val).ToString();
+        }
+        else
+        {
+            element.stringValue = EditorGUI.TextField(rect, field.Name, element.stringValue);
+        }
+    }
+
     public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
     {
         string scriptName = property.FindPropertyRelative("EffectScript").stringValue;
-        var fields = AssetManager.GetFieldsForType(scriptName);
-        int fieldCount = (fields != null) ? fields.Length : 0;
-        return 18 + (fieldCount * 20) + 5;
+        Type type = AssetManager.GetEffectType(scriptName);
+        FieldInfo[] fields = AssetManager.GetFieldsForType(scriptName);
+
+        if (fields == null) return 20f;
+
+        bool hasShowDuration = type?.GetCustomAttribute<ShowDurationAttribute>() != null;
+        int visibleCount = 0;
+
+        foreach (var f in fields)
+        {
+            if (f.Name == "Duration" && !hasShowDuration) continue;
+            visibleCount++;
+        }
+
+        return 20f + (visibleCount * 20f) + 5f;
     }
 }

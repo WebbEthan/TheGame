@@ -3,6 +3,8 @@ using UnityEngine;
 
 
 // This is the parameter and scripting store
+[AttributeUsage(AttributeTargets.Class)]
+public class ShowDurationAttribute : Attribute { }
 [Serializable]
 public struct EffectDesign
 {
@@ -14,7 +16,6 @@ public abstract class Effect : ScriptableObject
 {
     [NonSerialized]
     public string Name;
-    [NonSerialized]
     public float Duration;
     // Applys effect return ticks per second
     public virtual int ApplyEffect(StatBlock stats) { return 1; }
@@ -35,6 +36,7 @@ public class Hurt : Effect
         return 0;
     }
 }
+[ShowDuration]
 public class Poison : Effect
 {
     public float DamagePerTick;

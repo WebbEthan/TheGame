@@ -17,7 +17,7 @@ public static class AssetManager
     public static void CacheEffectData()
     {
 
-        ThreadManager.MainLog.LogItem("Starting Effect Cache Process");
+        if (Application.isPlaying) ThreadManager.MainLog.LogItem("Starting Effect Cache Process");
         var types = Assembly.GetAssembly(typeof(Effect)).GetTypes()
             .Where(t => t.IsClass && !t.IsAbstract && t.IsSubclassOf(typeof(Effect)));
 
@@ -36,10 +36,10 @@ public static class AssetManager
                 });
 
                 // Logging the discovery of the effect type and its parameter count
-                ThreadManager.MainLog.LogItem($"Cached Effect Type: {type.Name} with {allFields.Length} parameters.");
+                if (Application.isPlaying) ThreadManager.MainLog.LogItem($"Cached Effect Type: {type.Name} with {allFields.Length} parameters.");
             }
         }
-        ThreadManager.MainLog.LogItem("Effect Cache Initialization Complete.");
+        if (Application.isPlaying) ThreadManager.MainLog.LogItem("Effect Cache Initialization Complete.");
     }
 
     public static Effect GenerateEffect(string effectName, string[] parameterValues)
@@ -77,11 +77,19 @@ public static class AssetManager
         return null;
     }
 #if UNITY_EDITOR
-public static string[] GetEffectNames() { CacheEffectData(); return scriptableEffects.Keys.ToArray(); }
+    public static string[] GetEffectNames() { CacheEffectData(); return scriptableEffects.Keys.ToArray(); }
 
     public static FieldInfo[] GetFieldsForType(string typeName)
     {
+        CacheEffectData(); // Ensure we are cached before looking up
         return scriptableEffects.TryGetValue(typeName, out var data) ? data.fields : null;
+    }
+
+    // Add this method to resolve the compiler error
+    public static Type GetEffectType(string typeName)
+    {
+        CacheEffectData();
+        return scriptableEffects.TryGetValue(typeName, out var data) ? data.type : null;
     }
 #endif
 }
