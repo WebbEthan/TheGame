@@ -1,0 +1,168 @@
+#pragma kernel UpdateSoftBody
+
+struct SoftBodyNode
+{
+    float2 restingPos;
+    float2 velocity;
+    float invMass;
+    float padding0;
+    float2 padding1;
+};
+
+struct ColliderData
+{
+    float2 position;
+    float2 size;
+    float rotation;
+    uint type;
+    uint inUse;
+    uint padding;
+};
+
+
+float2 _ParentPosition;
+RWStructuredBuffer<SoftBodyNode> _Nodes;
+StructuredBuffer<ColliderData> _Colliders;
+RWStructuredBuffer<float3> _Vertices;
+
+int _VertexCount;
+int _ColliderCount;
+float _Stiffness;
+float _Dampening;
+float _DeltaTime;
+
+float2 Rotate(float2 pos, float angleRad)
+{
+    float cosA = cos(angleRad);
+    float sinA = sin(angleRad);
+    return float2(
+        pos.x * cosA - pos.y * sinA,
+        pos.x * sinA + pos.y * cosA
+    );
+}
+// Mesh -> collider-local
+float2 ConvertToLocalSpace(float2 meshPos, ColliderData collider)
+{
+    float2 relative = meshPos - collider.position + _ParentPosition;
+    return Rotate(relative, -collider.rotation); // rotate opposite
+}
+// Collider-local -> mesh
+float2 ConvertToMeshSpace(float2 localPos, ColliderData collider)
+{
+    float2 rotated = Rotate(localPos, collider.rotation);
+    return rotated + collider.position - _ParentPosition;
+}
+
+
+
+float2 GetBoxColliderMove(float2 localPos, ColliderData collider)
+{
+
+    return float2(0, 0);
+
+}
+
+
+// returns how much to push to move outside collider
+float2 GetCollisionPoint(float2 meshPos, SoftBodyNode node)
+{
+    float2 newPos = meshPos;
+    for (int i = 0; i < _ColliderCount; i++)
+    {
+        if (_Colliders[i].inUse)
+        {
+            float2 localPos = ConvertToLocalSpace(meshPos, _Colliders[i]);
+            if (_Colliders[i].type == 0) // box
+            {
+                float2 boxPosABS = abs(localPos);
+                
+                if (boxPosABS.x < _Colliders[i].size.x && boxPosABS.y < _Colliders[i].size.y)
+                {
+                    float2 boxEdges = sign(localPos);
+                    float2 boxDistToEdge = _Colliders[i].size - boxPosABS;
+                    // Take only closest edge
+                    float2 boxOut = localPos;
+                    if (boxDistToEdge.x < boxDistToEdge.y)
+                    {
+                        boxOut.x = _Colliders[i].size.x * boxEdges.x;
+                    }
+                    else
+                    {
+                        boxOut.y = _Colliders[i].size.y * boxEdges.y;
+                    }
+                    newPos = ConvertToMeshSpace(boxOut, _Colliders[i]);
+                    break;
+                }
+            }
+            else if (_Colliders[i].type == 1)
+            {
+                
+            }
+            else
+            {
+                
+            }
+
+        }
+        else
+            break;
+    }
+    // reset opposing velocity
+    float2 collisionNormal = normalize(newPos - meshPos);
+
+    // Only remove velocity into the collider
+    float vDotN = dot(node.velocity, collisionNormal);
+    if (vDotN < 0)
+    {
+        node.velocity -= collisionNormal * vDotN;
+    }
+
+    return newPos;
+
+}
+
+[numthreads(64, 1, 1)]
+void UpdateSoftBody(uint id : SV_DispatchThreadID)
+{
+    if (id >= (uint)_VertexCount)
+        return;
+    // Collision
+    float2 vertexPos = float2(_Vertices[id].x, _Vertices[id].y);
+    float2 newPos = GetCollisionPoint(vertexPos, _Nodes[id]);
+    _Vertices[id] = float3(newPos.x, newPos.y, 0);
+    // Tension
+    // --- TENSION / SPRING TO REST POSITION ---
+
+    SoftBodyNode node = _Nodes[id];
+
+// Position AFTER collision snap
+    float2 pos = newPos;
+
+// Vector back to rest position
+    float2 toRest = node.restingPos - pos;
+
+// Hooke spring force
+    float2 springForce = toRest * _Stiffness;
+
+// Integrate velocity (mass-aware)
+    node.velocity += springForce * node.invMass * _DeltaTime;
+
+// Damping (critical after snap correction)
+    node.velocity *= exp(-_Dampening * _DeltaTime);
+
+// Optional safety clamp (prevents blowups)
+    node.velocity = clamp(node.velocity, -100.0, 100.0);
+
+// Integrate position
+    pos += node.velocity * _DeltaTime;
+
+// Write back
+    _Vertices[id] = float3(pos, 0);
+    _Nodes[id].velocity = node.velocity;
+
+}
+    
+
+
+
+

@@ -1,3 +1,4 @@
+using NUnit.Framework;
 using System;
 using UnityEngine;
 
@@ -48,5 +49,6 @@ public class Poison : Effect
     public override void TickEffect(StatBlock stats)
     {
         stats.HP -= DamagePerTick;
+
     }
 }

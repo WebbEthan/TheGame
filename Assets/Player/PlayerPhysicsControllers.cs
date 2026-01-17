@@ -77,7 +77,7 @@ public class PlayerPhysicsController
     // Cached cast distances
     private float groundCastDistance;
     private float wallCastDistance;
-    private void _cacheColliderInfo()
+    public void CacheColliderInfo()
     {
         colliderSize = collider.bounds.size;
 
@@ -90,6 +90,7 @@ public class PlayerPhysicsController
 
         groundCastDistance = halfHeight + groundCheckBuffer;
         wallCastDistance = halfWidth + groundCheckBuffer;
+        ThreadManager.MainLog.LogItem("Cached Player Collider Info");
     }
     #endregion
 
@@ -103,7 +104,6 @@ public class PlayerPhysicsController
         physicsInteractor = rigidbody2D;
         collider = rigidbody2D.gameObject.GetComponent<Collider2D>();
         attributes = attributeSet;
-        _cacheColliderInfo();
     }
     #region ColisionChecks
     private const float groundCheckBuffer = 0.05f;
@@ -257,13 +257,23 @@ public class PlayerPhysicsController
             }
             // Handles Coyote and Double Jump
             CoyoteTimer -= Time.deltaTime;
-            if (AllowJumpStart && (CoyoteTimer > 0 || RemainingJumps > 0) && MoveVector.y > 0 && !NeedWallGap)
+            if (AllowJumpStart && MoveVector.y > 0 && !NeedWallGap)
             {
-                RemainingJumpTime = attributes.MaxJumpTime;
-                RemainingJumps--;
-                CoyoteTimer = 0;
+                if (CoyoteTimer > 0)
+                {
+                    RemainingJumpTime = attributes.MaxJumpTime;
+                    CoyoteTimer = 0;
 
-                Inertia.y = 0;
+                    Inertia.y = 0;
+                }
+                else if (RemainingJumps > 0)
+                {
+                    RemainingJumpTime = attributes.MaxJumpTime;
+                    RemainingJumps--;
+                    CoyoteTimer = 0;
+
+                    Inertia.y = 0;
+                }
             }
         }
 

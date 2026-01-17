@@ -21,10 +21,18 @@ public class LocalPlayerControler : GeneralizedStateHandler
 
 
     public PlayerPhysicsController physicsController;
+    public PlayerSoftBodyHandling softBodyHandling;
+    private void Resize()
+    {
+        physicsController.CacheColliderInfo();
+        softBodyHandling.Resize();
+    }
+
     private void Start()
     {
         Rigidbody2D physicsInteractor = GetComponent<Rigidbody2D>();
         physicsController = new PlayerPhysicsController(physicsInteractor, PhysicsAttributeSet);
+        Resize();
     }
 
 

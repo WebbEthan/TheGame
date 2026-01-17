@@ -10,6 +10,7 @@ public static class ThreadManager
 {
     private static string LogPath = "";
     public static int TerrainThreadID;
+    public static int PlayerThreadID;
 
     public static LogHandler MainLog;
     public static LogHandler ObjectLog;
@@ -23,6 +24,7 @@ public static class ThreadManager
 
         // Start Threads
         TerrainThreadID = StartNewThread("Terraing Generation Thread");
+        PlayerThreadID = StartNewThread("Dynamic Player Thread");
 
 
     }

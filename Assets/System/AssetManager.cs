@@ -44,8 +44,6 @@ public static class AssetManager
 
     public static Effect GenerateEffect(string effectName, string[] parameterValues)
     {
-        CacheEffectData();
-
         if (scriptableEffects.TryGetValue(effectName, out EffectTypeData data))
         {
             // Create the unique instance in memory
