@@ -6,7 +6,7 @@ struct SoftBodyNode
     float2 velocity;
     float invMass;
     float padding0;
-    float2 padding1;
+    float2 previousPos;
 };
 
 struct ColliderData
@@ -14,16 +14,19 @@ struct ColliderData
     float2 position;
     float2 size;
     float rotation;
-    uint type;
+    uint type; // 0 - box, 1 - circle
     uint inUse;
     uint padding;
 };
 
 
 float2 _ParentPosition;
+float2 _OldParentPosition;
 RWStructuredBuffer<SoftBodyNode> _Nodes;
 StructuredBuffer<ColliderData> _Colliders;
 RWStructuredBuffer<float3> _Vertices;
+
+int _CollisionMode; // 0 - Descrete, 1 - Continuous
 
 int _VertexCount;
 int _ColliderCount;
@@ -41,127 +44,193 @@ float2 Rotate(float2 pos, float angleRad)
     );
 }
 // Mesh -> collider-local
-float2 ConvertToLocalSpace(float2 meshPos, ColliderData collider)
+float2 ConvertToLocalSpace(float2 meshPos, ColliderData collider, float2 parentPos)
 {
-    float2 relative = meshPos - collider.position + _ParentPosition;
+    float2 relative = meshPos - collider.position + parentPos;
     return Rotate(relative, -collider.rotation); // rotate opposite
 }
 // Collider-local -> mesh
-float2 ConvertToMeshSpace(float2 localPos, ColliderData collider)
+float2 ConvertToMeshSpace(float2 localPos, ColliderData collider, float2 parentPos)
 {
     float2 rotated = Rotate(localPos, collider.rotation);
-    return rotated + collider.position - _ParentPosition;
+    return rotated + collider.position - parentPos;
+}
+
+// Returns the correct posision out
+float3 BoxCollision(float2 localPos, float2 oldLocalPos, ColliderData collider)
+{
+    float2 boxPosABS = abs(localPos);
+    if (_CollisionMode == 0) // Descrete
+    {
+        // Check if point is inside the AABB
+        if (boxPosABS.x < collider.size.x && boxPosABS.y < collider.size.y)
+        {
+            float2 boxEdges = sign(localPos);
+            float2 boxDistToEdge = collider.size - boxPosABS;
+            // Take only closest edge
+            float2 boxOut = localPos;
+            if (boxDistToEdge.x < boxDistToEdge.y)
+            {
+                boxOut.x = collider.size.x * boxEdges.x;
+            }
+            else
+            {
+                boxOut.y = collider.size.y * boxEdges.y;
+            }
+            return float3(boxOut.x, boxOut.y, 1);
+        }
+    }
+    else // continuous
+    {
+        float2 dir = localPos - oldLocalPos;
+    
+    // 1. Calculate intersection times for all planes
+    // Using a safer division to handle near-zero movement
+        float2 invDir = 1.0f / (dir + sign(dir) * 1e-9f);
+        float2 t0 = (-collider.size - oldLocalPos) * invDir;
+        float2 t1 = (collider.size - oldLocalPos) * invDir;
+
+        float2 tMin = min(t0, t1);
+        float2 tMax = max(t0, t1);
+
+        float tEntry = max(tMin.x, tMin.y);
+        float tExit = min(tMax.x, tMax.y);
+
+    // 2. Intersection Test
+    // Collision occurs if the entry is before the exit AND it happened during this frame
+        if (tEntry < tExit && tEntry < 1.0f && tExit > 0.0f)
+        {
+        // Calculate the normal based on which axis hit first
+            float2 normal = float2(0, 0);
+            if (tMin.x > tMin.y)
+            {
+                normal.x = (dir.x > 0) ? -1.0f : 1.0f;
+            }
+            else
+            {
+                normal.y = (dir.y > 0) ? -1.0f : 1.0f;
+            }
+
+        // 3. Position Correction
+        // We use tEntry to find the exact boundary
+            float tFinal = max(0.0f, tEntry);
+            float2 hitPoint = oldLocalPos + dir * tFinal;
+
+        // Apply a slightly larger offset for softbodies (e.g., 0.01 instead of 0.001)
+        // because softbody particles are prone to jitter
+            hitPoint += normal * 0.01f;
+
+        // Return the hit point and signal a hit (z = 1)
+            return float3(hitPoint.x, hitPoint.y, 1);
+        }
+    }
+
+    return float3(localPos.x, localPos.y, 0);
+}
+float3 ElipseCollision(float2 localPos, float2 oldLocalPos, ColliderData collider)
+{
+    float a = collider.size.x;
+    float b = collider.size.y;
+
+    float x = localPos.x;
+    float y = localPos.y;
+
+    float value = (x * x) / (a * a) + (y * y) / (b * b);
+
+    if (value <= 1.0f)
+    {
+        // Push point to ellipse surface along radial direction
+        float scale = rsqrt(value); // 1 / sqrt(value)
+        float2 outPos = localPos * scale;
+
+        return float3(outPos.x, outPos.y, 1);
+    }
+
+    return float3(localPos.x, localPos.y, 0);
 }
 
 
 
-float2 GetBoxColliderMove(float2 localPos, ColliderData collider)
+float2 GetCollisionPoint(float2 meshPos, float2 oldPos)
 {
-
-    return float2(0, 0);
-
-}
-
-
-// returns how much to push to move outside collider
-float2 GetCollisionPoint(float2 meshPos, SoftBodyNode node)
-{
-    float2 newPos = meshPos;
+    [loop]
     for (int i = 0; i < _ColliderCount; i++)
     {
-        if (_Colliders[i].inUse)
+        ColliderData collider = _Colliders[i];
+        if (collider.inUse)
         {
-            float2 localPos = ConvertToLocalSpace(meshPos, _Colliders[i]);
-            if (_Colliders[i].type == 0) // box
+            float2 localPos = ConvertToLocalSpace(meshPos, collider, _ParentPosition);
+            float2 localOldPos = ConvertToLocalSpace(oldPos, collider, _OldParentPosition);
+            float3 CollisionResults = float3(0, 0, 0);
+            if (collider.type == 0) // box
             {
-                float2 boxPosABS = abs(localPos);
-                
-                if (boxPosABS.x < _Colliders[i].size.x && boxPosABS.y < _Colliders[i].size.y)
-                {
-                    float2 boxEdges = sign(localPos);
-                    float2 boxDistToEdge = _Colliders[i].size - boxPosABS;
-                    // Take only closest edge
-                    float2 boxOut = localPos;
-                    if (boxDistToEdge.x < boxDistToEdge.y)
-                    {
-                        boxOut.x = _Colliders[i].size.x * boxEdges.x;
-                    }
-                    else
-                    {
-                        boxOut.y = _Colliders[i].size.y * boxEdges.y;
-                    }
-                    newPos = ConvertToMeshSpace(boxOut, _Colliders[i]);
-                    break;
-                }
+                CollisionResults = BoxCollision(localPos, localOldPos, collider);
             }
-            else if (_Colliders[i].type == 1)
+            else if (collider.type == 1) // elipse
             {
-                
+                CollisionResults = ElipseCollision(localPos, localOldPos, collider);
             }
             else
             {
                 
             }
-
+            // return if collided
+            if (CollisionResults.z == 1)
+            {
+                return ConvertToMeshSpace(float2(CollisionResults.x, CollisionResults.y), collider, _ParentPosition);
+            }
         }
         else
             break;
     }
-    // reset opposing velocity
-    float2 collisionNormal = normalize(newPos - meshPos);
-
-    // Only remove velocity into the collider
-    float vDotN = dot(node.velocity, collisionNormal);
-    if (vDotN < 0)
-    {
-        node.velocity -= collisionNormal * vDotN;
-    }
-
-    return newPos;
-
+    return meshPos;
 }
-
 [numthreads(64, 1, 1)]
 void UpdateSoftBody(uint id : SV_DispatchThreadID)
 {
-    if (id >= (uint)_VertexCount)
+    if (id >= (uint) _VertexCount)
         return;
-    // Collision
-    float2 vertexPos = float2(_Vertices[id].x, _Vertices[id].y);
-    float2 newPos = GetCollisionPoint(vertexPos, _Nodes[id]);
-    _Vertices[id] = float3(newPos.x, newPos.y, 0);
-    // Tension
-    // --- TENSION / SPRING TO REST POSITION ---
 
     SoftBodyNode node = _Nodes[id];
+    float2 currentPos = _Vertices[id].xy;
 
-// Position AFTER collision snap
-    float2 pos = newPos;
-
-// Vector back to rest position
-    float2 toRest = node.restingPos - pos;
-
-// Hooke spring force
+    // --- 1. SPRING INTEGRATION ---
+    // Calculate forces based on the position from the LAST frame
+    float2 toRest = node.restingPos - currentPos;
     float2 springForce = toRest * _Stiffness;
-
-// Integrate velocity (mass-aware)
-    node.velocity += springForce * node.invMass * _DeltaTime;
-
-// Damping (critical after snap correction)
-    node.velocity *= exp(-_Dampening * _DeltaTime);
-
-// Optional safety clamp (prevents blowups)
-    node.velocity = clamp(node.velocity, -100.0, 100.0);
-
-// Integrate position
-    pos += node.velocity * _DeltaTime;
-
-// Write back
-    _Vertices[id] = float3(pos, 0);
-    _Nodes[id].velocity = node.velocity;
-
-}
     
+    // Update velocity
+    node.velocity += springForce * node.invMass * _DeltaTime;
+    node.velocity *= exp(-_Dampening * _DeltaTime);
+    
+    // Predict next position
+    float2 predictedPos = currentPos + node.velocity * _DeltaTime;
+
+    // --- 2. COLLISION RESOLUTION ---
+    // Check if the path from currentPos to predictedPos hits anything
+    float2 finalPos = GetCollisionPoint(predictedPos, currentPos);
+
+    // --- 3. VELOCITY CORRECTION ---
+    // If the position was changed by GetCollisionPoint, we hit something.
+    if (any(finalPos != predictedPos))
+    {
+        // Calculate the actual movement direction to find the normal
+        // Or better: update GetCollisionPoint to return the normal.
+        float2 collisionDir = normalize(predictedPos - finalPos);
+        
+        // Remove velocity heading INTO the collider
+        float vDotN = dot(node.velocity, collisionDir);
+        if (vDotN > 0)
+        {
+            node.velocity -= collisionDir * vDotN;
+        }
+    }
+
+    // --- 4. WRITE BACK ---
+    _Vertices[id] = float3(finalPos, 0);
+    node.previousPos = currentPos; // Store for next frame's CCD
+    _Nodes[id] = node;
+}
 
 
 

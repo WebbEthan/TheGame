@@ -1,0 +1,41 @@
+float3 BoxCollision(float2 localPos, float2 oldLocalPos, ColliderData collider)
+{
+    // Chek if inside box
+    float2 boxPosABS = abs(localPos);
+    if (boxPosABS.x < collider.size.x && boxPosABS.y < collider.size.y)
+    {
+        // return out point
+        float2 boxEdges = sign(localPos);
+        if (_CollisionMode == 0) // descrete
+        {
+            float2 boxDistToEdge = collider.size - boxPosABS;
+            // Take only closest edge
+            float2 boxOut = localPos;
+            if (boxDistToEdge.x < boxDistToEdge.y)
+            {
+                boxOut.x = collider.size.x * boxEdges.x;
+            }
+            else
+            {
+                boxOut.y = collider.size.y * boxEdges.y;
+            }
+            return float3(boxOut.x, boxOut.y, 1);
+        }
+        else // continuous
+        {
+            // Ray-cast in the direction of old position to new position
+            float2 dir = normalize(oldLocalPos - localPos);
+            float2 targetEdges = sign(dir);
+            float2 edgeAlignment = boxEdges * targetEdges;
+            float2 distancesToEdges = collider.size - (boxPosABS * edgeAlignment);
+            // Calculate distance to edge smallest is true edge
+            float2 RayCastDistance = distancesToEdges / abs(dir);
+            // Pick closest hit == actual distance to edge
+            float hitT = (RayCastDistance.x < RayCastDistance.y) ? RayCastDistance.x : RayCastDistance.y;
+            float2 edge = localPos + (dir * hitT);
+            // return to correct quadrent
+            return float3(edge.x, edge.y, 1);
+        }
+    }
+    return float3(0, 0, 0);
+}

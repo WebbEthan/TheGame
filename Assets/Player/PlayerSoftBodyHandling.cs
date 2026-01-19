@@ -4,20 +4,21 @@ using System.Runtime.InteropServices;
 using UnityEngine;
 using UnityEngine.Rendering;
 
+
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
 public class PlayerSoftBodyHandling : MonoBehaviour
 {
     #region Follow Logic
+    private Rigidbody2D parentRigidbody;
     public Transform FollowTarget;
     public float followStrength = 20f;
     public float followDamping = 5f;
     public float SizeMultiplier;
-    
+    public float z = -1;
     Vector2 velocity;
     private void LateUpdate()
     {
-        // Scale first (important)
-
+        parentRigidbody = FollowTarget.gameObject.GetComponent<Rigidbody2D>();
         // --- SOFT FOLLOW ---
         Vector2 targetPos = FollowTarget.position;
         Vector2 currentPos = transform.position;
@@ -30,13 +31,14 @@ public class PlayerSoftBodyHandling : MonoBehaviour
         // --- CONTAINMENT ---
         nextPos = ConstrainPointToEllipse(nextPos, targetPos, Vector2.one * 0.5f);
 
-        transform.position = nextPos;
+        transform.position = new Vector3 (nextPos.x, nextPos.y, z);
 
         
     }
-    private void FixedUpdate()
+    private bool _initialized = false;
+    private void Update()
     {
-        UpdateSoftBody();
+        if (_initialized) UpdateSoftBody();
     }
     Vector2 ConstrainPointToEllipse(Vector2 softPos, Vector2 center, Vector2 radius) // ensures soft body does not leave the parent object
     {
@@ -194,10 +196,11 @@ public class PlayerSoftBodyHandling : MonoBehaviour
     #region SoftBody
     public int vertexCount;
     public int CollisionCount;
+    public float CollisionCheckSizeMultiplier;
     public void UpdateSoftBody()
     {
         // Get CPU bound ready for GPU
-        Collider2D[] hits = Physics2D.OverlapBoxAll(transform.position, transform.lossyScale * SizeMultiplier, 0f, SoftBodyCollisionLayerMask);
+        Collider2D[] hits = Physics2D.OverlapBoxAll(transform.position, transform.lossyScale * SizeMultiplier * CollisionCheckSizeMultiplier, 0f, SoftBodyCollisionLayerMask);
         CollisionCount = hits.Length;
         for (int i = 0; i < MaxSoftBodyCollisions; i++)
         {
@@ -217,6 +220,8 @@ public class PlayerSoftBodyHandling : MonoBehaviour
 
                     case CircleCollider2D circle:
                         colliders[i].type = 1;
+                        Vector3 ElipseSize = hits[i].gameObject.transform.lossyScale;
+                        colliders[i].size = new Vector2(ElipseSize.x, ElipseSize.y) / 2;
                         break;
 
                     case PolygonCollider2D poly:
@@ -265,16 +270,26 @@ public class PlayerSoftBodyHandling : MonoBehaviour
         public Vector2 velocity;     // 8
         public float invMass;        // 4
         public float padding0;       // 4
-        public Vector2 padding1;     // 8  → 32 bytes
+        public Vector2 previousPos;     // 8  → 32 bytes
     }
 
+    public float MaxStretch;
     public float Stiffness;
     public float Dampening;
+    public CollisionDetectionMode collisionDetectionMode;
 
     private Mesh renderedMesh;
     private SoftBodyNode[] nodes;
     private ColliderData[] colliders = new ColliderData[MaxSoftBodyCollisions];
-
+    public void ResetState()
+    {
+        for (int i = 0; i < renderedMesh.vertices.Length; i++)
+        {
+            nodes[i].velocity = Vector2.zero;
+            renderedMesh.vertices[i] = nodes[i].restingPos;
+        }
+        Debug.Log("Reset SoftBody");
+    }
     private void LinkData()
     {
         renderedMesh.SetVertexBufferParams(
@@ -295,7 +310,8 @@ public class PlayerSoftBodyHandling : MonoBehaviour
             {
                 restingPos = new Vector2(v.x, v.y),
                 velocity = Vector2.zero,
-                invMass = 1f
+                invMass = 1f,
+                previousPos = Vector2.zero
             };
         }
         // --- Mesh ---
@@ -337,22 +353,29 @@ public class PlayerSoftBodyHandling : MonoBehaviour
 
         softBodyCS.SetInt("_VertexCount", vertexCount);
         softBodyCS.SetInt("_ColliderCount", MaxSoftBodyCollisions);
-    }
 
+        OldPos = new Vector2(transform.position.x, transform.position.y);
+        _initialized = true;
+    }
+    private Vector2 OldPos;
     private void InstanceGPU()
     {
         // Dynamic parameters
+        softBodyCS.SetInt("_CollisionMode", (int)collisionDetectionMode);
         softBodyCS.SetFloat("_Stiffness", Stiffness);
         softBodyCS.SetFloat("_Dampening", Dampening);
+      //  softBodyCS.SetFloat("_MaxStretch", MaxStretch);
         softBodyCS.SetFloat("_DeltaTime", Time.deltaTime);
         softBodyCS.SetVector("_ParentPosition", new Vector2(transform.position.x, transform.position.y));
-
+        softBodyCS.SetVector("_OldParentPosition", OldPos);
         // Update collider data (fixed-size, no realloc)
         colliderBuffer.SetData(colliders);
 
         // Dispatch
         int threadGroups = Mathf.CeilToInt(renderedMesh.vertexCount / 64f);
         softBodyCS.Dispatch(kernel, threadGroups, 1, 1);
+
+        OldPos = new Vector2(transform.position.x, transform.position.y);
     }
 
 
